@@ -26,12 +26,12 @@
 // ==========================================
 
 // Supabase Configuration
-char SUPABASE_URL[100] = "https://hjlwzkwiweocnfztshmy.supabase.co";
+char SUPABASE_URL[100] = "https://zoqzgirtrhpxodrutjvs.supabase.co";
 char SUPABASE_KEY[300] =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqbHd6a3dpd2VvY25menRzaG15Iiwicm9sZSI6Im"
-    "Fub24iLCJpYXQiOjE3ODMzNjEyNDEsImV4cCI6MjA5ODkzNzI0MX0."
-    "OUx-ZWTdA-_BCW8sbIMw8E13CONOh5IjcjLko87RRC0";
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcXpnaXJ0cmhweG9kcnV0anZzIiwicm9sZSI6Im"
+    "Fub24iLCJpYXQiOjE3OTA5NjI4MjksImV4cCI6MjEwNjUzODgyOX0."
+    "lLDg3wusxxumjEfEW2ny_60qJ8VdBwmlODwDLOxvPDc";
 
 #define FIRMWARE_VERSION "1.0.1"
 #define BOARD_TYPE "ESP32-C3 Mini"

@@ -812,7 +812,7 @@ export default function Broadcast() {
       localStorage.setItem('broadcast_stream_bypass_other_audio', String(streamBypassOtherAudio))
 
       // Route stream through Supabase Edge Function proxy to handle redirects/headers
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://hjlwzkwiweocnfztshmy.supabase.co'
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zoqzgirtrhpxodrutjvs.supabase.co'
       const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(normalizedUrl)}`
 
       const commands = targetDevices.map(d => ({

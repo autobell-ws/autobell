@@ -33,12 +33,12 @@
 
 // Supabase Configuration
 // Supabase Configuration (Dynamic with working default fallbacks)
-char SUPABASE_URL[100] = "https://hjlwzkwiweocnfztshmy.supabase.co";
+char SUPABASE_URL[100] = "https://zoqzgirtrhpxodrutjvs.supabase.co";
 char SUPABASE_KEY[300] =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqbHd6a3dpd2VvY25menRzaG15Iiwicm9sZSI6Im"
-    "Fub24iLCJpYXQiOjE3ODMzNjEyNDEsImV4cCI6MjA5ODkzNzI0MX0."
-    "OUx-ZWTdA-_BCW8sbIMw8E13CONOh5IjcjLko87RRC0";
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcXpnaXJ0cmhweG9kcnV0anZzIiwicm9sZSI6Im"
+    "Fub24iLCJpYXQiOjE3OTA5NjI4MjksImV4cCI6MjEwNjUzODgyOX0."
+    "lLDg3wusxxumjEfEW2ny_60qJ8VdBwmlODwDLOxvPDc";
 
 // Firmware Version
 #define FIRMWARE_VERSION "1.0.1"
@@ -85,7 +85,7 @@ const long UTC_OFFSET_SEC = 18000; // GMT+5 for Pakistan
 const unsigned long SCHEDULE_SYNC_INTERVAL = 5 * 60 * 1000;
 const unsigned long COMMAND_POLL_INTERVAL = 30 * 1000; // 30s offline/disconnected fallback
 const unsigned long COMMAND_POLL_PASSIVE_INTERVAL = 5 * 60 * 1000; // 5 min passive fallback when WebSocket is connected
-const unsigned long HEARTBEAT_INTERVAL = 60 * 1000;
+const unsigned long HEARTBEAT_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const unsigned long PROVISION_POLL_INTERVAL = 10 * 1000;
 const unsigned long AUDIO_CACHE_SYNC_INTERVAL = 10 * 60 * 1000;
 

@@ -55,8 +55,7 @@ public:
         esp_websocket_client_config_t ws_cfg = {};
         ws_cfg.uri = _wsUri.c_str();
         ws_cfg.disable_auto_reconnect = false;
-        ws_cfg.reconnect_timeout_ms = 10000;
-        ws_cfg.network_timeout_ms = 15000;
+        ws_cfg.pingpong_timeout_sec = 15;
         ws_cfg.buffer_size = 4096;
 
         if (_client) {
