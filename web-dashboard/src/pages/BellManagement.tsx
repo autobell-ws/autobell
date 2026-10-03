@@ -47,7 +47,7 @@ type DeviceRecord = {
   activation_notes?: string | null
 }
 
-const ONLINE_TIMEOUT_MS = 5 * 60 * 1000
+const ONLINE_TIMEOUT_MS = 15 * 60 * 1000
 
 function resolveDeviceStatus(status: string | null, last_heartbeat: string | null) {
   if (last_heartbeat) {

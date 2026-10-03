@@ -69,7 +69,7 @@ export default function Overview() {
         const onlineCount = activeDevicesData.filter(d => {
           const isOnlineByStatus = d.status === 'online'
           const isOnlineByHeartbeat = d.last_heartbeat 
-            ? Date.now() - new Date(d.last_heartbeat).getTime() <= 5 * 60 * 1000 
+            ? Date.now() - new Date(d.last_heartbeat).getTime() <= 15 * 60 * 1000 
             : false
           return isOnlineByStatus || isOnlineByHeartbeat
         }).length || 0

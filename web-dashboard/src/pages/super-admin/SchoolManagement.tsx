@@ -5,7 +5,7 @@ import { Plus, Building, Mail, Lock, MapPin, Wifi, WifiOff, Search, Settings, X,
 import { useAuth } from '@/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 
-const ONLINE_TIMEOUT_MS = 5 * 60 * 1000
+const ONLINE_TIMEOUT_MS = 15 * 60 * 1000
 
 type School = {
   id: string

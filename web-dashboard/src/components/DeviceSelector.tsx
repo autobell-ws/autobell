@@ -13,7 +13,7 @@ export type DeviceOption = {
   profile_name?: string | null
 }
 
-const ONLINE_TIMEOUT_MS = 5 * 60 * 1000
+const ONLINE_TIMEOUT_MS = 15 * 60 * 1000
 
 function isDeviceOnline(status: string | null, last_heartbeat: string | null): boolean {
   if (last_heartbeat) {
