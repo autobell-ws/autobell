@@ -25,7 +25,7 @@ const log = {
   header: (msg) => console.log(`\n${COLORS.bright}${COLORS.magenta}=== ${msg} ===${COLORS.reset}\n`)
 };
 
-log.header("AutoBell Session-Scoped Deployment Agent");
+log.header("AutoBell Session-Scoped Deployment Agent (Vercel & Supabase)");
 
 // 1. Locate and parse env file
 const envPath = path.resolve(__dirname, 'web-dashboard/.env.local');
@@ -64,56 +64,10 @@ if (fs.existsSync(envPath)) {
 
 // 2. Validate Credentials
 const supabaseToken = process.env.SUPABASE_ACCESS_TOKEN;
-let firebaseCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 if (!supabaseToken) {
   log.error("SUPABASE_ACCESS_TOKEN is missing. Please add it to web-dashboard/.env.local");
   process.exit(1);
-}
-
-if (!firebaseCreds) {
-  log.error("GOOGLE_APPLICATION_CREDENTIALS is missing. Please add it to web-dashboard/.env.local");
-  process.exit(1);
-}
-
-// Resolve firebase credentials path relative to root or web-dashboard
-let resolvedFirebaseCreds = firebaseCreds;
-if (!path.isAbsolute(firebaseCreds)) {
-  const rootPath = path.resolve(__dirname, firebaseCreds);
-  const webPath = path.resolve(__dirname, 'web-dashboard', firebaseCreds);
-  if (fs.existsSync(rootPath)) {
-    resolvedFirebaseCreds = rootPath;
-  } else if (fs.existsSync(webPath)) {
-    resolvedFirebaseCreds = webPath;
-  } else {
-    resolvedFirebaseCreds = rootPath; // fallback
-  }
-}
-
-if (!fs.existsSync(resolvedFirebaseCreds)) {
-  log.error(`Firebase Service Account key file not found. Checked:\n - ${path.resolve(__dirname, firebaseCreds)}\n - ${path.resolve(__dirname, 'web-dashboard', firebaseCreds)}`);
-  process.exit(1);
-}
-
-// Ensure the resolved absolute path is used in GOOGLE_APPLICATION_CREDENTIALS
-process.env.GOOGLE_APPLICATION_CREDENTIALS = resolvedFirebaseCreds;
-
-// 3. Verify .firebaserc configuration (must target 'iobell')
-const firebaseRcPath = path.resolve(__dirname, 'web-dashboard/.firebaserc');
-if (fs.existsSync(firebaseRcPath)) {
-  try {
-    const rc = JSON.parse(fs.readFileSync(firebaseRcPath, 'utf8'));
-    const defaultProject = rc?.projects?.default;
-    if (defaultProject !== 'iobell') {
-      log.error(`CRITICAL: Firebase configuration targets '${defaultProject}' but must target 'iobell'. Deployment halted.`);
-      process.exit(1);
-    }
-    log.success("Verified Firebase target project: 'iobell'");
-  } catch (err) {
-    log.warn(`Could not parse .firebaserc: ${err.message}`);
-  }
-} else {
-  log.warn("No .firebaserc found in web-dashboard folder.");
 }
 
 const statusTable = [];
@@ -142,7 +96,7 @@ function runStep(name, cmd, args, cwd) {
   }
 }
 
-// 4. Run Supabase Database Push (from Root Path)
+// 3. Run Supabase Database Push (from Root Path)
 const supabaseDbSuccess = runStep(
   "Supabase DB Migrations (supabase db push)",
   "npx",
@@ -150,7 +104,7 @@ const supabaseDbSuccess = runStep(
   __dirname
 );
 
-// 5. Run Supabase Functions Deploy (from Root Path)
+// 4. Run Supabase Functions Deploy (from Root Path)
 let supabaseFuncSuccess = false;
 if (supabaseDbSuccess) {
   supabaseFuncSuccess = runStep(
@@ -164,7 +118,7 @@ if (supabaseDbSuccess) {
   statusTable.push({ Step: "Supabase Edge Functions", Status: "SKIPPED" });
 }
 
-// 6. Build Web Dashboard (in web-dashboard directory)
+// 5. Build Web Dashboard (in web-dashboard directory)
 const webDashboardDir = path.resolve(__dirname, 'web-dashboard');
 let webBuildSuccess = false;
 if (supabaseDbSuccess) {
@@ -179,42 +133,17 @@ if (supabaseDbSuccess) {
   statusTable.push({ Step: "Build Web Dashboard", Status: "SKIPPED" });
 }
 
-// 7. Deploy to Firebase (in web-dashboard directory)
-let firebaseSuccess = false;
+// 6. Note on Vercel Hosting
 if (webBuildSuccess) {
-  firebaseSuccess = runStep(
-    "Firebase Frontend Deployment (firebase deploy)",
-    "npx",
-    ["firebase", "deploy", "--only", "hosting"],
-    webDashboardDir
-  );
-} else {
-  log.warn("Skipping Firebase deployment because build failed.");
-  statusTable.push({ Step: "Firebase Deployment", Status: "SKIPPED" });
-}
-
-// 8. Session-close Verification and Cleanup
-log.header("Session Cleanup & Security Verification");
-
-// Validate if any global sessions exist on disk
-const globalFirebaseCheck = spawnSync("npx", ["firebase", "login:list"], { shell: true });
-const globalFirebaseOutput = globalFirebaseCheck.stdout?.toString() || '';
-const hasGlobalFirebase = !globalFirebaseOutput.includes("No authorized accounts");
-
-if (hasGlobalFirebase) {
-  log.warn("Detected a lingering global Firebase session on your computer.");
-  log.info("Closing global session for safety...");
-  spawnSync("npx", ["firebase", "logout"], { stdio: 'inherit', shell: true });
-  log.success("Global Firebase session logged out.");
-} else {
-  log.success("No global Firebase sessions found on disk.");
+  log.info("Web dashboard build succeeded. Vercel automatically deploys via Git commits.");
+  statusTable.push({ Step: "Vercel Frontend Deployment (Git)", Status: "READY" });
 }
 
 // Print deployment summary
 log.header("Deployment Summary");
 console.table(statusTable);
 
-const allSuccess = supabaseDbSuccess && supabaseFuncSuccess && webBuildSuccess && firebaseSuccess;
+const allSuccess = supabaseDbSuccess && supabaseFuncSuccess && webBuildSuccess;
 if (allSuccess) {
   log.success("All deployments completed successfully! Your session remains clean and secure.");
   process.exit(0);

@@ -25,7 +25,7 @@ export default function App() {
       <StatusBar style="dark" backgroundColor="#F3F4F6" />
       <WebView
         ref={webViewRef}
-        source={{ uri: 'https://iobell.web.app' }}
+        source={{ uri: 'https://autobell-q2um5zzqi-autobell-ws.vercel.app' }}
         style={styles.webview}
         onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
         allowsInlineMediaPlayback={true}

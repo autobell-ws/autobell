@@ -42,7 +42,7 @@ graph TD
     Edge -.->|Logic| DB
 ```
 
-*   **Web Dashboard (React + Vite):** Hosted at [https://iobell.web.app/](https://iobell.web.app/). School admins manage schedules, audio files, and user access. Super Admins manage global inventory, schools, and partner accounts.
+*   **Web Dashboard (React + Vite):** Hosted at [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/). School admins manage schedules, audio files, and user access. Super Admins manage global inventory, schools, and partner accounts.
 *   **Mobile Application (React Native / Expo):** Used by school staff for manual bell triggers, broadcasts, and Emergency Mode.
 *   **Supabase Cloud Backend:** Handles database records (PostgreSQL), file storage (buckets: `audio-files`, `voice-notes`, `school-branding`, `firmware`), realtime push updates via WebSockets, and serverless Edge Functions.
 *   **Smart Bell Devices (ESP32 Firmware):** Physical controllers connected to speakers/amplifiers. Connects via WiFi, syncs time via NTP, polls backend for schedules (stored in local LittleFS/SPIFFS cache for offline resilience), and listens to WebSockets (Supabase Realtime) for manual/emergency triggers.

@@ -68,7 +68,7 @@ def create_presentation():
         footer_box = slide.shapes.add_textbox(Inches(0.8), Inches(7.0), Inches(11.733), Inches(0.3))
         tf = footer_box.text_frame
         p = tf.paragraphs[0]
-        p.text = f"AutoBell | Next-Gen Smart Campus Bell & Audio System   •   https://iobell.web.app/   •   Slide {current_slide} of {total_slides}"
+        p.text = f"AutoBell | Next-Gen Smart Campus Bell & Audio System   •   https://autobell-q2um5zzqi-autobell-ws.vercel.app/   •   Slide {current_slide} of {total_slides}"
         p.font.size = Pt(9)
         p.font.color.rgb = COLOR_MUTED_TEXT if not dark_mode else RGBColor(148, 163, 184)
         p.font.name = "Arial"
@@ -141,7 +141,7 @@ def create_presentation():
     infobox = slide1.shapes.add_textbox(Inches(0.8), Inches(5.8), Inches(7.5), Inches(0.8))
     itf = infobox.text_frame
     ip = itf.paragraphs[0]
-    ip.text = "🌐 Live Dashboard: iobell.web.app   |   🏢 Enterprise Customer Presentation"
+    ip.text = "🌐 Live Dashboard: autobell-q2um5zzqi-autobell-ws.vercel.app   |   🏢 Enterprise Customer Presentation"
     ip.font.size = Pt(12)
     ip.font.bold = True
     ip.font.color.rgb = COLOR_GOLD
@@ -567,7 +567,7 @@ def create_presentation():
     pw1.font.color.rgb = COLOR_BLUE_ACCENT
 
     web_list = [
-        "URL: https://iobell.web.app/ — Accessible from any PC, tablet, or desktop browser.",
+        "URL: https://autobell-q2um5zzqi-autobell-ws.vercel.app/ — Accessible from any PC, tablet, or desktop browser.",
         "Drag-and-Drop Schedule Builder: Easily manage complex period timings & bell durations.",
         "Real-Time Controller Status: Live indicators for Wi-Fi signal, online status, and active profile.",
         "Multi-School Campus Management: Manage multiple school buildings or branches from one master account.",
@@ -737,7 +737,7 @@ def create_presentation():
     pc3.font.color.rgb = COLOR_GOLD
 
     pc4 = tf_c.add_paragraph()
-    pc4.text = "https://iobell.web.app/"
+    pc4.text = "https://autobell-q2um5zzqi-autobell-ws.vercel.app/"
     pc4.alignment = PP_ALIGN.CENTER
     pc4.font.size = Pt(22)
     pc4.font.bold = True

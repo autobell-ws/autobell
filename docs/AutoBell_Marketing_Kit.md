@@ -1,6 +1,6 @@
 # AutoBell – Complete Marketing & Advertising Kit
 **Version:** Updated 2026  
-**Product Site:** [https://iobell.web.app/](https://iobell.web.app/)
+**Product Site:** [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)
 
 ---
 
@@ -67,7 +67,7 @@
 > 🔒 Instant Emergency Lockdown Alerts  
 > 📶 Works 100% Offline During Power/Wi-Fi Outages  
 > **Call to Action:** Learn More / Request Demo  
-> **Link:** https://iobell.web.app/
+> **Link:** https://autobell-q2um5zzqi-autobell-ws.vercel.app/
 
 #### Option 2: Feature Showcase (Carousel / Video Ad)
 > **Headline:** Your School Campus, Perfectly Synced.  
@@ -77,7 +77,7 @@
 > ✅ Full System Backup & Restore Protection  
 > ✅ 100% Hardware Watchdog Uptime Guarantee  
 > **Call to Action:** Book a Free Demo Today  
-> **Link:** https://iobell.web.app/
+> **Link:** https://autobell-q2um5zzqi-autobell-ws.vercel.app/
 
 ---
 
@@ -91,7 +91,7 @@
 > 🔹 Instant Emergency Slide Trigger for Campus Safety  
 > 🔹 Partner Program for School IT Vendors & Integrators  
 > **Call to Action:** Contact Sales  
-> **Link:** https://iobell.web.app/
+> **Link:** https://autobell-q2um5zzqi-autobell-ws.vercel.app/
 
 ---
 
@@ -125,7 +125,7 @@
 > ✨ Instant Emergency Lockdown Alerts  
 > ✨ Offline-First reliability (Bells ring even without internet!)  
 >  
-> 🔗 **See Live Demo:** https://iobell.web.app/  
+> 🔗 **See Live Demo:** https://autobell-q2um5zzqi-autobell-ws.vercel.app/  
 > 📞 **Call/WhatsApp Us:** [Insert Contact Number]
 
 ---
@@ -138,7 +138,7 @@
     *Voiceover:* "Still relying on manual school bells?"
 *   **3-10s (Solution):** [Visual: Smooth transition to a smartphone tapping 'Exam Mode' on the AutoBell app. Cut to sleek AutoBell IoT device glowing blue, followed by students walking calmly into class.]  
     *Voiceover:* "Meet AutoBell. Smart scheduling, instant emergency alerts, and pre-announcement chimes—right from your phone."
-*   **10-15s (CTA):** [Visual: AutoBell logo animation with website URL: `iobell.web.app`]  
+*   **10-15s (CTA):** [Visual: AutoBell logo animation with website URL: `autobell-q2um5zzqi-autobell-ws.vercel.app`]  
     *Voiceover:* "AutoBell. Your campus, perfectly synced. Try it today!"
 
 ---
@@ -152,7 +152,7 @@
 *   **15-22s:** [Visual: Quick cut to mobile screen. Principal slides 'Emergency Lockdown'. Continuous alarm rings through high-quality campus speakers.]  
     *Voiceover:* "In emergencies, send instant lockdown alarms from your mobile app in seconds."
 *   **22-30s:** [Visual: AutoBell hardware box operating seamlessly with an 'Offline Mode Ready' badge.]  
-    *Voiceover:* "Works 100% offline with hardware watchdog reliability. Visit iobell.web.app today!"
+    *Voiceover:* "Works 100% offline with hardware watchdog reliability. Visit autobell-q2um5zzqi-autobell-ws.vercel.app today!"
 
 ---
 
@@ -167,7 +167,7 @@
 *   **42-52s:** [Visual: High-stakes scene. Teacher notices heavy rainstorm/hazard. Taps 'Emergency Alert' on mobile app. Immediate alert tone sounds across school buildings.]  
     *Voiceover:* "Campus safety is just a slide away with instant emergency triggers."
 *   **52-60s:** [Visual: Campus aerial shot fading into the AutoBell logo and URL.]  
-    *Voiceover:* "AutoBell: Your campus, perfectly synced. Visit iobell.web.app to schedule your free campus demo."
+    *Voiceover:* "AutoBell: Your campus, perfectly synced. Visit autobell-q2um5zzqi-autobell-ws.vercel.app to schedule your free campus demo."
 
 ---
 
@@ -206,7 +206,7 @@ Would you be open to a quick 5-minute virtual demo this week?
 Best regards,  
 [Your Name]  
 AutoBell Solutions  
-🔗 [https://iobell.web.app/](https://iobell.web.app/)
+🔗 [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)
 
 ---
 
@@ -229,6 +229,6 @@ AutoBell Solutions
 - **Hardware Watchdog:** Auto-recovers from freezes for guaranteed 100% hardware uptime.
 
 ### Back Cover: Call to Action
-- **Get Started Today:** Visit [https://iobell.web.app/](https://iobell.web.app/)
+- **Get Started Today:** Visit [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)
 - **Email:** sales@autobell.com
 - **Phone:** [Insert Sales Number]

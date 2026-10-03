@@ -9,7 +9,7 @@
 - **Hardware Integration:** Controls ESP32-based AutoBell smart controllers (40-pin, Wemos, ESP32-S3).
 - **Client Platforms:** Web Admin Dashboard (React + Vite + Tailwind + Shadcn UI) & Android Mobile App (Expo React Native).
 - **Target Institutions:** K-12 Schools, Colleges, Universities, Madrasas, Vocational Institutes, and Educational Campuses.
-- **Live Platform URL:** [https://iobell.web.app/](https://iobell.web.app/)
+- **Live Platform URL:** [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)
 
 ### Core Value Propositions
 - **Complete Bell Automation:** Effortlessly manage recurring daily schedules with unlimited profiles (Normal, Exam, Ramadan, Event).
@@ -59,7 +59,7 @@ Designed for educational equipment distributors, school IT contractors, and syst
 
 ## 4. Mobile App (React Native Expo)
 
-- **WebView Native Shell:** Embedded WebView pointing to `https://iobell.web.app` with native hardware integration.
+- **WebView Native Shell:** Embedded WebView pointing to `https://autobell-q2um5zzqi-autobell-ws.vercel.app` with native hardware integration.
 - **Android Support:** Android APK and EAS build integration with status bar optimization and hardware back-button handling.
 - **Mobile Capabilities:**
   - One-tap Profile Switcher (*Normal*, *Exam*, *Ramadan*).

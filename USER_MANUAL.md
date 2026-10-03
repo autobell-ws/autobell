@@ -29,7 +29,7 @@ Welcome to **AutoBell**! This manual provides step-by-step instructions for Scho
 
 The AutoBell ecosystem consists of three key components:
 *   **AutoBell IoT Controller:** Physical hardware box connected to your school's amplifiers, speakers, or bell relays.
-*   **Web Admin Dashboard:** Accessible at [https://iobell.web.app/](https://iobell.web.app/) for comprehensive scheduling and administration.
+*   **Web Admin Dashboard:** Accessible at [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/) for comprehensive scheduling and administration.
 *   **Mobile App:** Android application for quick management, manual triggers, live broadcasts, and instant emergency alarms.
 
 ---
@@ -37,7 +37,7 @@ The AutoBell ecosystem consists of three key components:
 ## 2. Web Dashboard
 
 ### Logging In
-1. Navigate to [https://iobell.web.app/](https://iobell.web.app/).
+1. Navigate to [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/).
 2. Enter your registered school email address and password.
 3. Upon authentication, you will be directed to your school's Overview dashboard.
 
@@ -114,7 +114,7 @@ AutoBell allows playing a signature chime or jingle before any bell or announcem
 ## 5. Partner & Reseller Portal
 
 For educational equipment distributors, school IT vendors, and system integrators:
-1. Log in at [https://iobell.web.app/login](https://iobell.web.app/login) using your partner credentials.
+1. Log in at [https://autobell-q2um5zzqi-autobell-ws.vercel.app/login](https://autobell-q2um5zzqi-autobell-ws.vercel.app/login) using your partner credentials.
 2. Access the **Partner Portal** (`/partner`):
    - **Overview:** Monitor total leads, deals closed, and active subscriptions.
    - **Leads & Deals:** Register new school prospects and track onboarding status.
@@ -126,4 +126,4 @@ For educational equipment distributors, school IT vendors, and system integrator
 
 For technical assistance or warranty support:
 *   **Email:** support@autobell.com
-*   **Help Center & Docs:** [https://iobell.web.app/](https://iobell.web.app/)
+*   **Help Center & Docs:** [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)

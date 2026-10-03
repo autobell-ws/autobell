@@ -2,7 +2,7 @@
 
 AutoBell is an enterprise-grade IoT solution designed to modernize school bell schedules, automated announcements, emergency alerts, and audio broadcasting. School administrators manage daily operations remotely via a sleek Web Dashboard or Android Mobile App, with offline-first execution handled by ESP32-based controllers installed on-site.
 
-**Live Dashboard:** [https://iobell.web.app/](https://iobell.web.app/)
+**Live Dashboard:** [https://autobell-q2um5zzqi-autobell-ws.vercel.app/](https://autobell-q2um5zzqi-autobell-ws.vercel.app/)
 
 ---
 
