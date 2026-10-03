@@ -49,6 +49,10 @@ BEGIN
         raw_user_meta_data,
         created_at,
         updated_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change,
         is_sso_user,
         is_anonymous
     ) VALUES (
@@ -63,6 +67,10 @@ BEGIN
         jsonb_build_object('sub', new_user_id, 'email', email_input, 'email_verified', true, 'phone_verified', false),
         now(),
         now(),
+        '',
+        '',
+        '',
+        '',
         FALSE,
         FALSE
     );
