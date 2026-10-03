@@ -100,7 +100,7 @@ export default function PreAnnouncementManagement() {
       return
     }
 
-    const { isOverLimit, sizeKb } = validateAudioFileSize(file, 70)
+    const { isOverLimit, sizeKb } = validateAudioFileSize(file, 200)
     if (isOverLimit) {
       setOversizedKb(sizeKb)
       setShowCompressModal(true)

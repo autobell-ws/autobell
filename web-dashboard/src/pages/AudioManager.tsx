@@ -199,7 +199,7 @@ export default function AudioManager() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      const { isOverLimit, sizeKb } = validateAudioFileSize(file, 70)
+      const { isOverLimit, sizeKb } = validateAudioFileSize(file, 200)
       if (isOverLimit) {
         setOversizedKb(sizeKb)
         setShowCompressModal(true)
