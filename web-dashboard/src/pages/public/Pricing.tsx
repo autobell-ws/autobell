@@ -22,7 +22,7 @@ export default function Pricing() {
       pricePkr: 58500,
       badge: 'Controller Only',
       features: [
-        '1x AutoBell Core IoT Controller (ESP32-S3)',
+        '1x AutoBell Core IoT Controller',
         '1x Industrial 24V DC DIN-Rail Power Supply',
         'Built-in 10A Bell Relay dry contact output',
         'Standard DIN-rail mounting hardware kit',
@@ -39,7 +39,7 @@ export default function Pricing() {
       pricePkr: 84500,
       badge: 'Most Popular',
       features: [
-        '1x AutoBell Core IoT Controller (ESP32-S3)',
+        '1x AutoBell Core IoT Controller',
         '2x 50W High-Acoustic Weatherproof Horn Speakers',
         '1x Industrial 24V DC DIN-Rail Power Supply',
         'Pre-loaded studio chimes & Westminster bell tones',
@@ -57,7 +57,7 @@ export default function Pricing() {
       pricePkr: 145000,
       badge: 'Enterprise Multi-Zone',
       features: [
-        '1x AutoBell Core IoT Controller (ESP32-S3)',
+        '1x AutoBell Core IoT Controller',
         '4x 50W Weatherproof Outdoor Horn Speakers',
         '1x 4-Zone Relay Expansion Module (independent wing bells)',
         '1x Heavy-Duty 24V 5A Industrial Power Supply',

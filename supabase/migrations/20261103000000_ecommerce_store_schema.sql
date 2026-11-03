@@ -157,7 +157,7 @@ VALUES
 (
     'AB-CTRL-S3',
     'AutoBell Core IoT Controller',
-    'Dual-core ESP32-S3 DIN-rail IoT controller with 2.8" TFT color display, hardware RTC clock, RJ45 Ethernet, 2.4GHz Wi-Fi, and 10A solid-state bell relay.',
+    'High-performance DIN-rail IoT controller with 2.8" TFT color display, hardware RTC clock, RJ45 Ethernet, 2.4GHz Wi-Fi, and 10A solid-state bell relay.',
     'hardware',
     199,
     48500,
@@ -167,7 +167,7 @@ VALUES
     159,
     500,
     '/images/controller.png',
-    '["Dual-Core ESP32-S3 Processor", "2.8\" High-Contrast Color LCD", "100% Offline Hardware RTC Memory", "RJ45 Ethernet + 2.4GHz Wi-Fi", "10A Bell Relay Output", "24V DC UPS / Solar Inverter Ready", "DIN-Rail Industrial Mount"]'::jsonb
+    '["Proprietary Dual-Core High-Speed Processor", "2.8\" High-Contrast Color LCD", "100% Offline Hardware RTC Memory", "RJ45 Ethernet + 2.4GHz Wi-Fi", "10A Bell Relay Output", "24V DC UPS / Solar Inverter Ready", "DIN-Rail Industrial Mount"]'::jsonb
 ),
 (
     'AB-SPK-HORN50',

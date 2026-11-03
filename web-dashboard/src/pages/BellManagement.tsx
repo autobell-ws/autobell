@@ -334,7 +334,7 @@ export default function BellManagement() {
           </div>
           <div>
             <h3 className="text-lg font-bold text-foreground">No Bell Devices Registered</h3>
-            <p className="mt-1 text-xs text-muted-foreground max-w-md">Register your school's ESP32 bell controller hardware to start configuring schedules, volume, location tags, and remote buzzers.</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-md">Register your school's AutoBell controller hardware to start configuring schedules, volume, location tags, and remote buzzers.</p>
           </div>
           <button
             onClick={() => setIsRegisterModalOpen(true)}
@@ -369,7 +369,7 @@ export default function BellManagement() {
                     <div className="text-base font-semibold text-foreground truncate flex items-center gap-2" title={device.name || 'Unnamed Device'}>
                       <span>{device.name || 'Unnamed Device'}</span>
                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold shrink-0">
-                        {device.board_type === 'ESP32-C3 Mini' ? 'Mini' : 'S3'}
+                        {device.board_type === 'ESP32-C3 Mini' ? 'Compact' : 'Standard'}
                       </span>
                     </div>
                     <div className="text-xs font-mono text-muted-foreground truncate" title={device.id}>

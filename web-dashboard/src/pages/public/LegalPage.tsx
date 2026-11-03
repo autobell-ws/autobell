@@ -94,7 +94,7 @@ export default function LegalPage() {
               </p>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white pt-2">Service Availability:</h3>
               <p>
-                AutoBell controllers are engineered with 100% autonomous local flash memory and an internal DS3231 real-time clock. Even if internet service is interrupted, scheduled period bells will continue to ring on time without disruption.
+                AutoBell controllers are engineered with 100% autonomous local flash memory and an internal precision real-time hardware clock. Even if internet service is interrupted, scheduled period bells will continue to ring on time without disruption.
               </p>
             </div>
           )}
@@ -119,7 +119,7 @@ export default function LegalPage() {
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">4. 3-Year Hardware Warranty & Replacement SLA</h2>
               <p>
-                Every AutoBell Core IoT Controller (ESP32-S3 DIN-rail unit) and Outdoor Weatherproof Horn Speaker is backed by our comprehensive 3-Year Limited Hardware Warranty.
+                Every AutoBell Core IoT Controller (Industrial DIN-rail unit) and Outdoor Weatherproof Horn Speaker is backed by our comprehensive 3-Year Limited Hardware Warranty.
               </p>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white pt-2">Warranty Inclusions:</h3>
               <p>

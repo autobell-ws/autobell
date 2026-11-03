@@ -301,7 +301,7 @@ export default function PeriodBellsAndAnnouncements() {
                     : 'text-muted-foreground hover:bg-muted'
                 }`}
               >
-                AutoBell S3
+                AutoBell Standard
               </button>
               <button
                 onClick={() => handleBoardTypeChange('ESP32-C3 Mini')}
@@ -311,7 +311,7 @@ export default function PeriodBellsAndAnnouncements() {
                     : 'text-muted-foreground hover:bg-muted'
                 }`}
               >
-                AutoBell Mini
+                AutoBell Compact
               </button>
             </div>
           )}

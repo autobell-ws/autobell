@@ -70,7 +70,7 @@ export function TimeSlotRow({ item, audioFiles, handleUpdateItem, handleDeleteIt
                     {boardType === 'ESP32-C3 Mini' ? (
                         <div className="flex flex-col gap-2">
                             <div className="text-xs text-primary font-medium p-2 rounded bg-primary/5 border border-primary/10 mb-1 select-none">
-                                ℹ️ Mini variant: Triggers the physical gong relay at this scheduled time.
+                                ℹ️ Compact variant: Triggers the physical gong relay at this scheduled time.
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-muted-foreground w-16 shrink-0">Duration:</span>

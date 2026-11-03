@@ -1531,8 +1531,8 @@ export default function InventoryManagement() {
               value={newItem.board_type}
               onChange={(e) => setNewItem({ ...newItem, board_type: e.target.value })}
             >
-              <option value="ESP32-S3 N16R8">ESP32-S3 N16R8</option>
-              <option value="ESP32-C3 Mini">ESP32-C3 Mini</option>
+              <option value="ESP32-S3 N16R8">AutoBell Standard Controller</option>
+              <option value="ESP32-C3 Mini">AutoBell Compact Controller</option>
             </select>
           </div>
           <button
@@ -1570,7 +1570,7 @@ export default function InventoryManagement() {
                     <tr key={item.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{item.serial_number}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{item.mac_address}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-xs">{item.board_type || 'ESP32-S3 N16R8'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-xs">{item.board_type === 'ESP32-C3 Mini' ? 'AutoBell Compact' : 'AutoBell Standard'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         {item.retired_at ? (
                           <span className="inline-flex rounded-full bg-destructive/10 px-2 text-xs font-semibold leading-5 text-destructive dark:text-red-400">Retired</span>

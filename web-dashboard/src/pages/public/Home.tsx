@@ -185,7 +185,7 @@ export default function Home() {
                 transition={{ duration: 0.5, delay: 0.2 }}
                 className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal"
               >
-                Say goodbye to unpunctual manual peons and drifting mechanical timers. AutoBell rings crystal-clear chimes and broadcasts campus voice notices directly from your smartphone — <strong className="text-slate-900 dark:text-white font-semibold">100% offline reliable</strong> with internal LittleFS memory and backup RTC clock.
+                Say goodbye to unpunctual manual peons and drifting mechanical timers. AutoBell rings crystal-clear chimes and broadcasts campus voice notices directly from your smartphone — <strong className="text-slate-900 dark:text-white font-semibold">100% offline reliable</strong> with internal solid-state flash memory and high-precision hardware clock.
               </motion.p>
 
               {/* Action Buttons & Quick Chime Audition */}
@@ -321,7 +321,7 @@ export default function Home() {
                   {/* Top Status Floating Pill */}
                   <div className="absolute top-4 left-4 bg-slate-950/90 backdrop-blur-md border border-teal-500/40 text-white px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 shadow-xl">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>ESP32-S3 Dual-Core Active</span>
+                    <span>AutoBell Dual-Core Active</span>
                   </div>
 
                   {/* Top Right Offline RTC Badge */}
@@ -494,10 +494,10 @@ export default function Home() {
                 <WifiOff className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                Zero-Downtime Offline RTC
+                Zero-Downtime Offline Clock
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                When campus Wi-Fi drops or the internet is cut, AutoBell continues ringing with microsecond precision from internal LittleFS flash memory and battery-backed DS3231 RTC.
+                When campus Wi-Fi drops or the internet is cut, AutoBell continues ringing with microsecond precision from internal non-volatile flash memory and battery-backed precision hardware clock.
               </p>
             </div>
 
