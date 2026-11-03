@@ -22,8 +22,8 @@ This prompt provides the end-to-end specification and code to replace that legac
 |                                    THE 2-MINUTE CUSTOMER JOURNEY                                   |
 |                                                                                                    |
 |   [ Step 1: Unbox & Power ]       [ Step 2: Connect WiFi ]          [ Step 3: Scan QR & Activate ] |
-|   Customer plugs 12V DC power     Phone connects to dynamic         Customer scans box QR in app.  |
-|   into AutoBell & speaker.        hotspot "AutoBell-XXXX".          Instant validation of Serial   |
+|   Customer plugs power cable into Phone connects to dynamic         Customer scans box QR in app.  |
+|   220V AC & connects speaker.     hotspot "AutoBell-XXXX".          Instant validation of Serial   |
 |   Status LED pulses Blue.         Captive portal asks ONLY for      & Claim PIN. 1-Year Free Cloud |
 |   Hotspot broadcasts.             school WiFi SSID & Password.      instantly active. Ready!       |
 +----------------------------------------------------------------------------------------------------+

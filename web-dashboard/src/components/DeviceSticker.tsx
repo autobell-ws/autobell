@@ -88,7 +88,7 @@ export function DeviceSticker({
             {model}
           </div>
           <div className="text-[8px] font-mono text-neutral-600 mt-0.5">
-            12V DC • 2.0A
+            220V AC • 50Hz
           </div>
         </div>
       </div>
@@ -165,7 +165,7 @@ export function DeviceSticker({
         </div>
         <div className="text-[8px] text-neutral-900 leading-tight space-y-0.5">
           <div>
-            <strong>1. Power:</strong> Plug in 12V DC power & connect speaker.
+            <strong>1. Power:</strong> Connect power cable to 220V AC & connect speaker.
           </div>
           <div>
             <strong>2. WiFi:</strong> Connect phone to WiFi <strong>{hotspot}</strong> & set router password.
