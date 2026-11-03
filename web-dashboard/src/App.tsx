@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/context/AuthContext'
+import { CurrencyProvider } from '@/context/CurrencyContext'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { QueryProvider } from '@/providers/QueryProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
@@ -28,7 +29,6 @@ import PartnerManagement from '@/pages/super-admin/PartnerManagement'
 import NotificationManagement from '@/pages/super-admin/NotificationManagement'
 import PreAnnouncementManagement from '@/pages/super-admin/PreAnnouncementManagement'
 import HealthDashboard from '@/pages/super-admin/HealthDashboard'
-import { IndexRedirect } from '@/components/IndexRedirect'
 
 import PartnerLayout from '@/layout/PartnerLayout'
 import PartnerOverview from '@/pages/partner/Overview'
@@ -38,67 +38,97 @@ import PartnerPayments from '@/pages/partner/Payments'
 import PartnerCommissions from '@/pages/partner/Commissions'
 import PartnerSettings from '@/pages/partner/Settings'
 
+// Public Marketing & E-Commerce Pages
+import PublicLayout from '@/layout/PublicLayout'
+import Home from '@/pages/public/Home'
+import Products from '@/pages/public/Products'
+import Pricing from '@/pages/public/Pricing'
+import Solutions from '@/pages/public/Solutions'
+import Buy from '@/pages/public/Buy'
+import CalculatorPage from '@/pages/public/CalculatorPage'
+import DemoPage from '@/pages/public/DemoPage'
+import PartnersPage from '@/pages/public/PartnersPage'
+import AboutContactPage from '@/pages/public/AboutContactPage'
+import LegalPage from '@/pages/public/LegalPage'
+
 function App() {
   return (
     <ErrorBoundary>
       <QueryProvider>
         <AuthProvider>
-          <ThemeProvider>
-            <BrowserRouter>
-              <ImpersonationBanner />
-              <Routes>
-                <Route path="/login" element={<Login />} />
-              
-                {/* Partner Routes */}
-                <Route element={<ProtectedRoute requiredRole="partner" />}>
-                  <Route path="/partner" element={<PartnerLayout />}>
-                    <Route index element={<PartnerOverview />} />
-                    <Route path="leads" element={<PartnerLeads />} />
-                    <Route path="deals" element={<PartnerDeals />} />
-                    <Route path="payments" element={<PartnerPayments />} />
-                    <Route path="commissions" element={<PartnerCommissions />} />
-                    <Route path="settings" element={<PartnerSettings />} />
+          <CurrencyProvider>
+            <ThemeProvider>
+              <BrowserRouter>
+                <ImpersonationBanner />
+                <Routes>
+                  {/* Public Marketing & E-Commerce Routes (Official Main Page) */}
+                  <Route element={<PublicLayout />}>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/products" element={<Products />} />
+                    <Route path="/pricing" element={<Pricing />} />
+                    <Route path="/solutions" element={<Solutions />} />
+                    <Route path="/solutions/:type" element={<Solutions />} />
+                    <Route path="/buy" element={<Buy />} />
+                    <Route path="/calculator" element={<CalculatorPage />} />
+                    <Route path="/demo" element={<DemoPage />} />
+                    <Route path="/partners" element={<PartnersPage />} />
+                    <Route path="/about" element={<AboutContactPage />} />
+                    <Route path="/contact" element={<AboutContactPage />} />
+                    <Route path="/legal" element={<LegalPage />} />
                   </Route>
-                </Route>
 
-                {/* Super Admin Routes */}
-                <Route element={<ProtectedRoute requiredRole="super_admin" />}>
-                  <Route path="/super-admin" element={<SuperAdminLayout />}>
-                    <Route index element={<SuperAdminOverview />} />
-                    <Route path="schools" element={<SchoolManagement />} />
-                    <Route path="users" element={<UserManagement />} />
-                    <Route path="partners" element={<PartnerManagement />} />
-                    <Route path="notifications" element={<NotificationManagement />} />
-                    <Route path="pre-announcements" element={<PreAnnouncementManagement />} />
-                    <Route path="inventory" element={<InventoryManagement />} />
-                    <Route path="backups" element={<SuperAdminBackups />} />
-                    <Route path="health" element={<HealthDashboard />} />
-                    <Route path="tickets" element={<TicketManagement />} />
-                    <Route path="reports" element={<ReportsManager />} />
+                  {/* Unified Authentication Gateway */}
+                  <Route path="/login" element={<Login />} />
+
+                  {/* Channel Partner Portal Routes */}
+                  <Route element={<ProtectedRoute requiredRole="partner" />}>
+                    <Route path="/partner" element={<PartnerLayout />}>
+                      <Route index element={<PartnerOverview />} />
+                      <Route path="leads" element={<PartnerLeads />} />
+                      <Route path="deals" element={<PartnerDeals />} />
+                      <Route path="payments" element={<PartnerPayments />} />
+                      <Route path="commissions" element={<PartnerCommissions />} />
+                      <Route path="settings" element={<PartnerSettings />} />
+                    </Route>
                   </Route>
-                </Route>
 
-                {/* School Admin / Operator Routes */}
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/dashboard" element={<DashboardLayout />}>
-                    <Route index element={<Overview />} />
-                    <Route path="bells" element={<BellManagement />} />
-                    <Route path="profiles" element={<ProfileEditor />} />
-                    <Route path="bells-and-announcements" element={<PeriodBellsAndAnnouncements />} />
-                    <Route path="audio" element={<AudioManager />} />
-                    <Route path="broadcast" element={<Broadcast />} />
-                    <Route path="reports" element={<ReportsManager />} />
-                    <Route path="tickets" element={<TicketManagement />} />
-                    <Route path="settings" element={<SchoolSettings />} />
-                    <Route path="backups" element={<SchoolBackups />} />
+                  {/* Super Admin Oversight Routes */}
+                  <Route element={<ProtectedRoute requiredRole="super_admin" />}>
+                    <Route path="/super-admin" element={<SuperAdminLayout />}>
+                      <Route index element={<SuperAdminOverview />} />
+                      <Route path="schools" element={<SchoolManagement />} />
+                      <Route path="users" element={<UserManagement />} />
+                      <Route path="partners" element={<PartnerManagement />} />
+                      <Route path="notifications" element={<NotificationManagement />} />
+                      <Route path="pre-announcements" element={<PreAnnouncementManagement />} />
+                      <Route path="inventory" element={<InventoryManagement />} />
+                      <Route path="backups" element={<SuperAdminBackups />} />
+                      <Route path="health" element={<HealthDashboard />} />
+                      <Route path="tickets" element={<TicketManagement />} />
+                      <Route path="reports" element={<ReportsManager />} />
+                    </Route>
                   </Route>
-                </Route>
 
-                <Route path="/" element={<IndexRedirect />} />
-              </Routes>
-            </BrowserRouter>
-            <Toaster position="top-right" richColors />
-          </ThemeProvider>
+                  {/* School Admin / Operator Dashboard Routes */}
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/dashboard" element={<DashboardLayout />}>
+                      <Route index element={<Overview />} />
+                      <Route path="bells" element={<BellManagement />} />
+                      <Route path="profiles" element={<ProfileEditor />} />
+                      <Route path="bells-and-announcements" element={<PeriodBellsAndAnnouncements />} />
+                      <Route path="audio" element={<AudioManager />} />
+                      <Route path="broadcast" element={<Broadcast />} />
+                      <Route path="reports" element={<ReportsManager />} />
+                      <Route path="tickets" element={<TicketManagement />} />
+                      <Route path="settings" element={<SchoolSettings />} />
+                      <Route path="backups" element={<SchoolBackups />} />
+                    </Route>
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+              <Toaster position="top-right" richColors />
+            </ThemeProvider>
+          </CurrencyProvider>
         </AuthProvider>
       </QueryProvider>
     </ErrorBoundary>

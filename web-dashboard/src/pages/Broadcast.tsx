@@ -602,9 +602,10 @@ export default function Broadcast() {
         status: 'pending'
       }))
 
-      const { error: cmdError } = await supabase
+      const { data: insertedCmds, error: cmdError } = await supabase
         .from('command_queue')
         .insert(commands)
+        .select('id, device_id')
 
       if (cmdError) throw cmdError
 
@@ -612,6 +613,7 @@ export default function Broadcast() {
       targetDevices.forEach(d => {
         if (d.mac_address) {
           const cleanMac = d.mac_address.replace(/[: -]/g, '').toUpperCase()
+          const cmdRecord = (insertedCmds as Array<{ id: number; device_id: string }> | null)?.find(c => c.device_id === d.id)
           const ch = supabase.channel(`device:${cleanMac}`)
           ch.subscribe((st) => {
             if (st === 'SUBSCRIBED') {
@@ -619,6 +621,7 @@ export default function Broadcast() {
                 type: 'broadcast',
                 event: 'command',
                 payload: {
+                  id: cmdRecord ? String(cmdRecord.id) : undefined,
                   command: 'VOICE_NOTE',
                   payload: {
                     url: publicUrl,
@@ -727,9 +730,10 @@ export default function Broadcast() {
         status: 'pending'
       }))
 
-      const { error: cmdError } = await supabase
+      const { data: insertedCmds, error: cmdError } = await supabase
         .from('command_queue')
         .insert(commands)
+        .select('id, device_id')
 
       if (cmdError) throw cmdError
 
@@ -737,6 +741,7 @@ export default function Broadcast() {
       targetDevices.forEach(d => {
         if (d.mac_address) {
           const cleanMac = d.mac_address.replace(/[: -]/g, '').toUpperCase()
+          const cmdRecord = (insertedCmds as Array<{ id: number; device_id: string }> | null)?.find(c => c.device_id === d.id)
           const ch = supabase.channel(`device:${cleanMac}`)
           ch.subscribe((st) => {
             if (st === 'SUBSCRIBED') {
@@ -744,6 +749,7 @@ export default function Broadcast() {
                 type: 'broadcast',
                 event: 'command',
                 payload: {
+                  id: cmdRecord ? String(cmdRecord.id) : undefined,
                   command: commandType,
                   payload: commandPayload
                 }

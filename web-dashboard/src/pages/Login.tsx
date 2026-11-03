@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { Loader2, Mail, Lock, AlertTriangle } from 'lucide-react'
+import { Loader2, Mail, Lock, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function Login() {
@@ -19,6 +19,8 @@ export default function Login() {
     if (!user || authLoading) return
     if (role === 'super_admin') {
       navigate('/super-admin', { replace: true })
+    } else if (role === 'partner') {
+      navigate('/partner', { replace: true })
     } else {
       navigate('/dashboard', { replace: true })
     }
@@ -70,13 +72,20 @@ export default function Login() {
       }
     } else {
       setFailedAttempts(0)
-      navigate('/')
+      // The useEffect will immediately route to the proper role portal (/super-admin, /partner, /dashboard)
     }
     setLoading(false)
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen relative">
+      <Link 
+        to="/" 
+        className="absolute top-6 left-6 z-20 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-background/80 backdrop-blur-md border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors shadow-sm"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        <span>Back to AutoBell Website</span>
+      </Link>
       {/* Left side with Marketing Image */}
       <div className="hidden lg:block lg:w-1/2 relative bg-white border-r border-border overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center p-4">

@@ -97,10 +97,15 @@ function runStep(name, cmd, args, cwd) {
 }
 
 // 3. Run Supabase Database Push (from Root Path)
+const dbArgs = ["supabase", "db", "push", "--remote", "--yes"];
+if (process.env.SUPABASE_DB_PASSWORD) {
+  dbArgs.push("--password", process.env.SUPABASE_DB_PASSWORD);
+}
+
 const supabaseDbSuccess = runStep(
-  "Supabase DB Migrations (supabase db push)",
+  "Supabase DB Migrations (supabase db push --remote)",
   "npx",
-  ["supabase", "db", "push"],
+  dbArgs,
   __dirname
 );
 
@@ -110,7 +115,7 @@ if (supabaseDbSuccess) {
   supabaseFuncSuccess = runStep(
     "Supabase Edge Functions (supabase functions deploy)",
     "npx",
-    ["supabase", "functions", "deploy"],
+    ["supabase", "functions", "deploy", "--yes"],
     __dirname
   );
 } else {

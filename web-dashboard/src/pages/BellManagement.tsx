@@ -216,11 +216,11 @@ export default function BellManagement() {
     mutationFn: async ({ deviceId, command, payload = {} }: { deviceId: string, command: string, payload?: Record<string, unknown> }) => {
       if (!schoolId) throw new Error('No school ID found')
       
-      const { error } = await supabase.from('command_queue').insert({
+      const { data: insertedCmd, error } = await supabase.from('command_queue').insert({
         device_id: deviceId,
         command,
         payload
-      })
+      }).select('id').single()
       if (error) throw error
 
       // Push via Supabase Realtime broadcast channels for zero-latency execution (<100ms)
@@ -233,7 +233,11 @@ export default function BellManagement() {
             ch.send({
               type: 'broadcast',
               event: 'command',
-              payload: { command, payload }
+              payload: {
+                id: insertedCmd ? String(insertedCmd.id) : undefined,
+                command,
+                payload
+              }
             }).then(() => supabase.removeChannel(ch))
           }
         })
