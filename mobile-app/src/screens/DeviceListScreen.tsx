@@ -26,6 +26,7 @@ export default function DeviceListScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [newDeviceName, setNewDeviceName] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
+  const [claimPin, setClaimPin] = useState('');
   const [registering, setRegistering] = useState(false);
 
   const fetchDevices = React.useCallback(async () => {
@@ -54,15 +55,37 @@ export default function DeviceListScreen() {
 
   const handleRegister = async () => {
     if (!newDeviceName.trim() || !serialNumber.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
     setRegistering(true);
     try {
+      if (claimPin.trim()) {
+        const { error: activateError } = await supabase.rpc('claim_and_activate_device', {
+          p_serial_number: serialNumber.trim(),
+          p_claim_pin: claimPin.trim(),
+          p_device_name: newDeviceName.trim()
+        });
+
+        if (!activateError) {
+          Alert.alert('Success', 'Device claimed and activated! 1-Year Free Cloud Service is active.');
+          setModalVisible(false);
+          setNewDeviceName('');
+          setSerialNumber('');
+          setClaimPin('');
+          fetchDevices();
+          return;
+        }
+
+        if (activateError.message?.includes('Invalid Claim PIN')) {
+          throw activateError;
+        }
+      }
+
       const { error } = await supabase.rpc('claim_device', {
-        p_serial_number: serialNumber,
-        p_device_name: newDeviceName
+        p_serial_number: serialNumber.trim(),
+        p_device_name: newDeviceName.trim()
       });
 
       if (error) throw error;
@@ -71,6 +94,7 @@ export default function DeviceListScreen() {
       setModalVisible(false);
       setNewDeviceName('');
       setSerialNumber('');
+      setClaimPin('');
       fetchDevices();
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -277,6 +301,18 @@ export default function DeviceListScreen() {
                 placeholder="Enter device serial number"
                 value={serialNumber}
                 onChangeText={setSerialNumber}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>6-Digit Claim PIN</Text>
+              <TextInput
+                style={[styles.input, { letterSpacing: 4, fontWeight: '700' }]}
+                placeholder="648291"
+                keyboardType="numeric"
+                maxLength={7}
+                value={claimPin}
+                onChangeText={setClaimPin}
               />
             </View>
 

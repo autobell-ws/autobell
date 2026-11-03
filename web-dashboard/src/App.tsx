@@ -7,6 +7,8 @@ import { QueryProvider } from '@/providers/QueryProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Login from '@/pages/Login'
+import Register from '@/pages/Register'
+import ClaimDevice from '@/pages/ClaimDevice'
 import DashboardLayout from '@/layout/DashboardLayout'
 import Overview from '@/pages/Overview'
 import BellManagement from '@/pages/BellManagement'
@@ -77,8 +79,11 @@ function App() {
                     <Route path="/legal" element={<LegalPage />} />
                   </Route>
 
-                  {/* Unified Authentication Gateway */}
+                  {/* Unified Authentication & Onboarding Gateways */}
                   <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/setup" element={<ClaimDevice />} />
+                  <Route path="/claim" element={<ClaimDevice />} />
 
                   {/* Channel Partner Portal Routes */}
                   <Route element={<ProtectedRoute requiredRole="partner" />}>

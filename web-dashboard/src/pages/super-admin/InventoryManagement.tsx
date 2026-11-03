@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Plus, Link as LinkIcon, Upload, CheckCircle2, AlertCircle, Search, ShieldCheck, Zap, Clock, Ban, Calendar } from 'lucide-react'
+import { Plus, Link as LinkIcon, Upload, CheckCircle2, AlertCircle, Search, ShieldCheck, Zap, Clock, Ban, Calendar, Printer, Tag } from 'lucide-react'
+import { DeviceSticker } from '@/components/DeviceSticker'
+import { DeviceStickerModal } from '@/components/DeviceStickerModal'
 
 type InventoryItem = {
   id: string
@@ -17,6 +19,8 @@ type InventoryItem = {
   is_paid?: boolean | null
   subscription_end_date?: string | null
   payment_reference?: string | null
+  claim_pin?: string | null
+  batch_id?: string | null
 }
 
 type SchoolRelation = {
@@ -123,6 +127,20 @@ export default function InventoryManagement() {
   const [suspendReason, setSuspendReason] = useState('')
   const [filterActivation, setFilterActivation] = useState<'all' | 'pending' | 'active' | 'expired' | 'suspended'>('all')
 
+  // Sticker Section & Printing State
+  const [activeMainTab, setActiveMainTab] = useState<'stickers' | 'inventory' | 'fleet'>('stickers')
+  const [selectedStickerDevice, setSelectedStickerDevice] = useState<{
+    serialNumber: string
+    macAddress: string
+    claimPin?: string | null
+    modelName?: string | null
+    schoolName?: string | null
+  } | null>(null)
+  const [isStickerModalOpen, setIsStickerModalOpen] = useState(false)
+  const [selectedStickerIds, setSelectedStickerIds] = useState<Record<string, boolean>>({})
+  const [stickerSearch, setStickerSearch] = useState('')
+  const [stickerFilter, setStickerFilter] = useState<'all' | 'unclaimed' | 'claimed'>('all')
+
   // CSV Bulk Upload State
   const [isCsvExpanded, setIsCsvExpanded] = useState(false)
   const [csvRows, setCsvRows] = useState<Array<{
@@ -215,7 +233,7 @@ export default function InventoryManagement() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('device_inventory')
-        .select('id, serial_number, mac_address, board_type, claimed_at, claimed_by_school_id, retired_at, retired_reason, activation_status, is_paid, subscription_end_date, payment_reference, schools(name)')
+        .select('id, serial_number, mac_address, board_type, claimed_at, claimed_by_school_id, retired_at, retired_reason, activation_status, is_paid, subscription_end_date, payment_reference, claim_pin, batch_id, schools(name)')
         .order('created_at', { ascending: false })
       if (error) {
         console.error('Failed to load device inventory for super admin:', error)
@@ -707,21 +725,310 @@ export default function InventoryManagement() {
     return true
   })
 
+  // Unified device stickers list for physical controller back labels
+  const allStickerDevices = inventory.map(item => {
+    const schoolName = Array.isArray(item.schools) 
+      ? item.schools[0]?.name 
+      : item.schools?.name
+    return {
+      id: item.id,
+      serial_number: item.serial_number,
+      mac_address: item.mac_address,
+      board_type: item.board_type,
+      claim_pin: item.claim_pin,
+      claimed_at: item.claimed_at,
+      school_name: schoolName || null,
+      batch_id: item.batch_id
+    }
+  })
+
+  // Also include any active bell_devices if not already in inventory
+  detectedDevices.forEach(d => {
+    if (!allStickerDevices.some(item => item.mac_address.toLowerCase() === d.mac_address.toLowerCase())) {
+      const schoolInfo = getSchoolInfo(d)
+      allStickerDevices.push({
+        id: d.id,
+        serial_number: `AB-${d.mac_address.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`,
+        mac_address: d.mac_address,
+        board_type: d.board_type,
+        claim_pin: null,
+        claimed_at: d.school_id ? new Date().toISOString() : null,
+        school_name: schoolInfo.name !== '-' ? schoolInfo.name : null,
+        batch_id: null
+      })
+    }
+  })
+
+  // Filter stickers by search query and category
+  const filteredStickerList = allStickerDevices.filter(dev => {
+    if (stickerFilter === 'unclaimed' && dev.claimed_at) return false
+    if (stickerFilter === 'claimed' && !dev.claimed_at) return false
+
+    if (stickerSearch.trim()) {
+      const q = stickerSearch.toLowerCase()
+      const matchSn = dev.serial_number.toLowerCase().includes(q)
+      const matchMac = dev.mac_address.toLowerCase().includes(q)
+      const matchSchool = (dev.school_name || '').toLowerCase().includes(q)
+      const matchBatch = (dev.batch_id || '').toLowerCase().includes(q)
+      if (!matchSn && !matchMac && !matchSchool && !matchBatch) return false
+    }
+
+    return true
+  })
+
+  const selectedStickerCount = Object.values(selectedStickerIds).filter(Boolean).length
+  const isAllStickersSelected = filteredStickerList.length > 0 && filteredStickerList.every(d => selectedStickerIds[d.id])
+
+  const handleSelectAllStickers = () => {
+    if (isAllStickersSelected) {
+      setSelectedStickerIds({})
+    } else {
+      const next: Record<string, boolean> = {}
+      filteredStickerList.forEach(d => { next[d.id] = true })
+      setSelectedStickerIds(next)
+    }
+  }
+
+  const toggleStickerSelection = (id: string) => {
+    setSelectedStickerIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }))
+  }
+
+  const handlePrintSelectedStickers = () => {
+    window.print()
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Device Inventory & Licensing</h2>
-          <p className="text-xs text-muted-foreground">Manage hardware stock, 1-click cloud activation, 1-year free subscriptions, and renewals.</p>
+          <p className="text-xs text-muted-foreground">Manage hardware stock, device back stickers & labels, 1-click cloud activation, and renewals.</p>
         </div>
+        {activeMainTab === 'inventory' && (
+          <button
+            onClick={() => setIsCsvExpanded(!isCsvExpanded)}
+            className="inline-flex items-center rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 text-sm font-medium border border-border transition-colors shadow-sm"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {isCsvExpanded ? 'Hide Bulk Import' : 'Bulk Import CSV'}
+          </button>
+        )}
+      </div>
+
+      {/* Top-Level Section Navigation Tabs */}
+      <div className="flex border-b border-border gap-2 overflow-x-auto autobell-no-print">
         <button
-          onClick={() => setIsCsvExpanded(!isCsvExpanded)}
-          className="inline-flex items-center rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 text-sm font-medium border border-border transition-colors shadow-sm"
+          type="button"
+          onClick={() => setActiveMainTab('stickers')}
+          className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+            activeMainTab === 'stickers'
+              ? 'border-primary text-primary bg-primary/5 rounded-t-lg'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
         >
-          <Upload className="mr-2 h-4 w-4" />
-          {isCsvExpanded ? 'Hide Bulk Import' : 'Bulk Import CSV'}
+          <Tag className="w-4 h-4" />
+          <span>Device Back Stickers & Labels</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-primary/10 text-primary font-mono">
+            {allStickerDevices.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('inventory')}
+          className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+            activeMainTab === 'inventory'
+              ? 'border-primary text-primary bg-primary/5 rounded-t-lg'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <span>Manufactured Stock ({inventory.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('fleet')}
+          className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+            activeMainTab === 'fleet'
+              ? 'border-primary text-primary bg-primary/5 rounded-t-lg'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <span>Deployed Fleet & Activations ({detectedDevices.length})</span>
         </button>
       </div>
+
+      {/* 1. DEDICATED DEVICE STICKERS & BACK LABELS SECTION */}
+      {activeMainTab === 'stickers' && (
+        <div className="space-y-6 autobell-no-print">
+          {/* Section Summary Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card border border-border p-6 rounded-2xl shadow-sm">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Hardware Enclosure Back Stickers</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Print-ready commercial labels for AutoBell controllers. Includes QR onboarding deep link, Digitap Business Solution attribution, unique Serial, Device MAC, and 3-step setup guide.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handlePrintSelectedStickers}
+                disabled={selectedStickerCount === 0}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:opacity-90 disabled:opacity-40 transition-all"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Selected ({selectedStickerCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSelectAllStickers}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors"
+              >
+                {isAllStickersSelected ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Category Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div className="relative w-full sm:w-96">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by Serial Number, MAC, or School..."
+                value={stickerSearch}
+                onChange={(e) => setStickerSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-card border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+              <button
+                type="button"
+                onClick={() => setStickerFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                  stickerFilter === 'all'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                All Stickers ({allStickerDevices.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStickerFilter('unclaimed')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                  stickerFilter === 'unclaimed'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20'
+                }`}
+              >
+                Unclaimed Factory Stock ({allStickerDevices.filter(d => !d.claimed_at).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStickerFilter('claimed')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                  stickerFilter === 'claimed'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                }`}
+              >
+                Active / Deployed ({allStickerDevices.filter(d => !!d.claimed_at).length})
+              </button>
+            </div>
+          </div>
+
+          {/* Grid of Printable Device Stickers */}
+          {filteredStickerList.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-card/40 p-12 text-center space-y-2">
+              <Tag className="w-8 h-8 mx-auto text-muted-foreground" />
+              <p className="text-sm font-semibold text-foreground">No devices match your sticker filter</p>
+              <p className="text-xs text-muted-foreground">Try adjusting your search query or reset the filter.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredStickerList.map((dev) => (
+                <div
+                  key={dev.id}
+                  className={`bg-card rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
+                    selectedStickerIds[dev.id] ? 'border-primary ring-2 ring-primary/40' : 'border-border'
+                  }`}
+                >
+                  <div className="flex items-center justify-between pb-3 border-b border-border/50">
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedStickerIds[dev.id]}
+                        onChange={() => toggleStickerSelection(dev.id)}
+                        className="rounded border-input text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span className="font-mono text-xs">{dev.serial_number}</span>
+                    </label>
+
+                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                      dev.claimed_at
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                    }`}>
+                      {dev.claimed_at ? (dev.school_name || 'Active') : 'In Stock'}
+                    </span>
+                  </div>
+
+                  {/* Scaled Sticker Preview Card */}
+                  <div className="py-4 flex justify-center overflow-hidden">
+                    <div className="transform scale-[0.88] origin-center hover:scale-[0.92] transition-transform">
+                      <DeviceSticker
+                        serialNumber={dev.serial_number}
+                        macAddress={dev.mac_address}
+                        claimPin={dev.claim_pin}
+                        modelName={dev.board_type}
+                        schoolName={dev.school_name}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Individual Print Action Bar */}
+                  <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[170px]">
+                      {dev.mac_address}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStickerDevice({
+                          serialNumber: dev.serial_number,
+                          macAddress: dev.mac_address,
+                          claimPin: dev.claim_pin,
+                          modelName: dev.board_type,
+                          schoolName: dev.school_name
+                        })
+                        setIsStickerModalOpen(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold transition-colors"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print Label</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {isCsvExpanded && (
         <div className="rounded-lg bg-card text-foreground p-6 shadow border border-border space-y-4">
@@ -1306,6 +1613,26 @@ export default function InventoryManagement() {
                         {/* Actions */}
                         <td className="px-4 py-3 text-right">
                           <div className="flex gap-1.5 justify-end items-center">
+                            {/* Sticker Print Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStickerDevice({
+                                  serialNumber: inventoryItem?.serial_number || `AB-${device.mac_address.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`,
+                                  macAddress: device.mac_address,
+                                  claimPin: inventoryItem?.claim_pin || null,
+                                  modelName: device.board_type,
+                                  schoolName: schoolName !== '-' ? schoolName : null
+                                })
+                                setIsStickerModalOpen(true)
+                              }}
+                              className="inline-flex items-center rounded-md border border-primary/30 bg-primary/10 text-primary px-2 py-1 text-xs font-semibold hover:bg-primary/20 transition-colors"
+                              title="Print Controller Back Sticker"
+                            >
+                              <Printer className="h-3 w-3 mr-1" />
+                              Sticker
+                            </button>
+
                             {/* Activation / Approval Button */}
                             {actStatus !== 'active' || isExpired ? (
                               <button
@@ -1589,8 +1916,29 @@ export default function InventoryManagement() {
                         {item.claimed_at ? new Date(item.claimed_at).toLocaleDateString() : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {!item.claimed_at && !item.retired_at && (
-                            <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const schoolName = Array.isArray(item.schools) ? item.schools[0]?.name : item.schools?.name
+                              setSelectedStickerDevice({
+                                serialNumber: item.serial_number,
+                                macAddress: item.mac_address,
+                                claimPin: item.claim_pin,
+                                modelName: item.board_type,
+                                schoolName: schoolName || null
+                              })
+                              setIsStickerModalOpen(true)
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+                            title="Print Back Sticker"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Sticker</span>
+                          </button>
+
+                          {!item.claimed_at && !item.retired_at && (
+                            <>
                                 <select 
                                     className="text-sm rounded-md shadow-sm border-input bg-background text-foreground focus:border-primary focus:ring-primary border p-1"
                                     value={selectedSchools[item.id] || ''}
@@ -1613,8 +1961,9 @@ export default function InventoryManagement() {
                                 >
                                     <LinkIcon className="h-4 w-4" />
                                 </button>
-                            </div>
-                        )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1925,6 +2274,63 @@ export default function InventoryManagement() {
           </div>
         </div>
       )}
+
+      {/* Device Back Sticker Modal */}
+      <DeviceStickerModal
+        isOpen={isStickerModalOpen}
+        onClose={() => setIsStickerModalOpen(false)}
+        device={selectedStickerDevice}
+      />
+
+      {/* Hidden Batch Print Container (Rendered during native window.print()) */}
+      <div className="hidden print:block autobell-batch-print-sheet">
+        <style>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            .autobell-batch-print-sheet, .autobell-batch-print-sheet * {
+              visibility: visible !important;
+            }
+            .autobell-batch-print-sheet {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              display: grid !important;
+              grid-template-columns: repeat(2, 1fr) !important;
+              gap: 16px !important;
+              padding: 4mm !important;
+              background: white !important;
+            }
+            .autobell-batch-print-item {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              margin-bottom: 8px !important;
+            }
+            @page {
+              size: auto;
+              margin: 4mm;
+            }
+          }
+        `}</style>
+        <div className="grid grid-cols-2 gap-4">
+          {(selectedStickerCount > 0
+            ? filteredStickerList.filter((d) => selectedStickerIds[d.id])
+            : filteredStickerList
+          ).map((dev) => (
+            <div key={dev.id} className="autobell-batch-print-item mb-4">
+              <DeviceSticker
+                serialNumber={dev.serial_number}
+                macAddress={dev.mac_address}
+                claimPin={dev.claim_pin}
+                modelName={dev.board_type}
+                schoolName={dev.school_name}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

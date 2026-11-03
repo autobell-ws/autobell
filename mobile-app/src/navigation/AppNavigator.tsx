@@ -18,6 +18,8 @@ import AudioManagerScreen from '../screens/AudioManagerScreen';
 import DeviceListScreen from '../screens/DeviceListScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import BroadcastScreen from '../screens/BroadcastScreen';
+import RegisterScreen from '../screens/RegisterScreen';
+import ClaimDeviceScreen from '../screens/ClaimDeviceScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -131,13 +133,29 @@ export default function AppNavigator() {
               component={ProfileSwitcherScreen} 
               options={{ title: 'Switch Profile' }} 
             />
+            <Stack.Screen 
+              name="ClaimDevice" 
+              component={ClaimDeviceScreen} 
+              options={{ 
+                title: 'Claim & Activate AutoBell',
+                headerStyle: { backgroundColor: '#0F172A' },
+                headerTintColor: '#fff'
+              }} 
+            />
           </>
         ) : (
-          <Stack.Screen 
-            name="Login" 
-            component={LoginScreen} 
-            options={{ headerShown: false }} 
-          />
+          <>
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen} 
+              options={{ headerShown: false }} 
+            />
+            <Stack.Screen 
+              name="Register" 
+              component={RegisterScreen} 
+              options={{ headerShown: false }} 
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

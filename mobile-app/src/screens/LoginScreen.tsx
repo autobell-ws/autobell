@@ -30,7 +30,7 @@ import { AutoBellLogoMark } from '../components/AutoBellLogo';
 
 const { width } = Dimensions.get('window');
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }: { navigation?: any }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -206,6 +206,17 @@ export default function LoginScreen() {
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
+
+                {navigation && (
+                  <TouchableOpacity 
+                    style={{ marginTop: 16, alignItems: 'center' }}
+                    onPress={() => navigation.navigate('Register')}
+                  >
+                    <Text style={{ color: '#94a3b8', fontSize: 13 }}>
+                      New customer? <Text style={{ color: '#38bdf8', fontWeight: '600' }}>Register School & Claim Bell</Text>
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
               
               <View style={styles.footerContainer}>

@@ -15,10 +15,12 @@ import {
   MessageCircle, 
   Clock, 
   AlertCircle,
-  FileText
+  FileText,
+  Printer
 } from 'lucide-react'
 import { DeviceRegistrationModal } from '../components/DeviceRegistrationModal'
 import { DeviceSettingsModal } from '../components/DeviceSettingsModal'
+import { DeviceStickerModal } from '../components/DeviceStickerModal'
 import { useAuth } from '@/hooks/useAuth'
 
 type DeviceRecord = {
@@ -145,6 +147,16 @@ export default function BellManagement() {
   const [slipPaymentRef, setSlipPaymentRef] = useState('')
   const [slipNotes, setSlipNotes] = useState('')
 
+  // Sticker Print Modal State
+  const [selectedStickerDevice, setSelectedStickerDevice] = useState<{
+    serialNumber: string
+    macAddress: string
+    claimPin?: string | null
+    modelName?: string | null
+    schoolName?: string | null
+  } | null>(null)
+  const [isStickerModalOpen, setIsStickerModalOpen] = useState(false)
+
   const { data: devices, isLoading } = useQuery<DeviceRecord[]>({
     queryKey: ['devices', schoolId],
     queryFn: async () => {
@@ -163,9 +175,23 @@ export default function BellManagement() {
   })
 
   const registerDeviceMutation = useMutation({
-    mutationFn: async (newDevice: { name: string; serial_number: string }) => {
+    mutationFn: async (newDevice: { name: string; serial_number: string; claim_pin: string }) => {
       if (!schoolId) {
         throw new Error('You must be logged in with a valid school ID to register devices.')
+      }
+
+      // Try zero-touch activation with Claim PIN first
+      if (newDevice.claim_pin) {
+        const { error: activateError } = await supabase.rpc('claim_and_activate_device', {
+          p_serial_number: newDevice.serial_number,
+          p_claim_pin: newDevice.claim_pin,
+          p_device_name: newDevice.name
+        })
+        if (!activateError) return
+        console.warn('claim_and_activate_device fallback to claim_device:', activateError)
+        if (activateError.message?.includes('Invalid Claim PIN')) {
+          throw activateError
+        }
       }
 
       const { error } = await supabase.rpc('claim_device', {
@@ -178,7 +204,7 @@ export default function BellManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
       setIsRegisterModalOpen(false)
-      setNotification({ type: 'success', message: 'Device registered successfully! First year free cloud subscription will activate upon order confirmation.' })
+      setNotification({ type: 'success', message: 'Device claimed and activated successfully! 1-Year Free Cloud Service is active.' })
       setTimeout(() => setNotification(null), 5000)
     },
     onError: (error) => {
@@ -570,6 +596,22 @@ export default function BellManagement() {
                     <Settings className="mr-1.5 h-4 w-4" />
                     Settings
                   </button>
+                  <button
+                    onClick={() => {
+                      setSelectedStickerDevice({
+                        serialNumber: `AB-${(device.mac_address || '').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()}`,
+                        macAddress: device.mac_address || '00:00:00:00:00:00',
+                        modelName: device.board_type,
+                        schoolName: null
+                      })
+                      setIsStickerModalOpen(true)
+                    }}
+                    className="inline-flex items-center justify-center rounded-lg bg-secondary text-secondary-foreground border border-border px-2.5 py-2 text-xs font-medium hover:bg-secondary/80 shadow-sm transition-all"
+                    title="Print Controller Back Sticker"
+                  >
+                    <Printer className="mr-1 h-3.5 w-3.5 text-primary" />
+                    Sticker
+                  </button>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -721,6 +763,13 @@ export default function BellManagement() {
           </div>
         </div>
       )}
+
+      {/* Device Back Sticker Modal */}
+      <DeviceStickerModal
+        isOpen={isStickerModalOpen}
+        onClose={() => setIsStickerModalOpen(false)}
+        device={selectedStickerDevice}
+      />
     </div>
   )
 }

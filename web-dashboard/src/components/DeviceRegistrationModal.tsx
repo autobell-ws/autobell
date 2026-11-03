@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, ShieldCheck, Sparkles } from 'lucide-react'
 
 interface DeviceRegistrationModalProps {
   isOpen: boolean
   onClose: () => void
-  onRegister: (data: { name: string; serial_number: string }) => Promise<void>
+  onRegister: (data: { name: string; serial_number: string; claim_pin: string }) => Promise<void>
 }
 
 export function DeviceRegistrationModal({ isOpen, onClose, onRegister }: DeviceRegistrationModalProps) {
   const [name, setName] = useState('')
   const [serialNumber, setSerialNumber] = useState('')
+  const [claimPin, setClaimPin] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,12 +19,28 @@ export function DeviceRegistrationModal({ isOpen, onClose, onRegister }: DeviceR
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    if (!serialNumber.trim()) {
+      setError('Please provide the device Serial Number.')
+      return
+    }
+
+    if (!claimPin.trim()) {
+      setError('Please provide the 6-digit Claim PIN printed on the label.')
+      return
+    }
+
     setIsLoading(true)
 
     try {
-      await onRegister({ name, serial_number: serialNumber })
+      await onRegister({ 
+        name: name.trim() || 'Main Campus Bell', 
+        serial_number: serialNumber.trim(), 
+        claim_pin: claimPin.trim() 
+      })
       setName('')
       setSerialNumber('')
+      setClaimPin('')
       onClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to register device')
@@ -33,10 +50,16 @@ export function DeviceRegistrationModal({ isOpen, onClose, onRegister }: DeviceR
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-lg bg-card text-foreground p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card text-foreground p-6 shadow-2xl border border-border">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-foreground">Register New Device</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-foreground">Register New Device</h3>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              <Sparkles className="w-3 h-3" />
+              1-Year Free
+            </span>
+          </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
@@ -44,7 +67,7 @@ export function DeviceRegistrationModal({ isOpen, onClose, onRegister }: DeviceR
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-muted-foreground">
+            <label htmlFor="name" className="block text-xs font-semibold text-muted-foreground mb-1">
               Device Name
             </label>
             <input
@@ -52,54 +75,74 @@ export function DeviceRegistrationModal({ isOpen, onClose, onRegister }: DeviceR
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-input px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="e.g., Main Hall Bell"
+              className="block w-full rounded-xl border border-input bg-background px-3 py-2 text-xs shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="e.g., Main Hall Bell / Academic Block"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="serial" className="block text-sm font-medium text-muted-foreground">
-              Serial Number
+            <label htmlFor="serial" className="block text-xs font-semibold text-muted-foreground mb-1">
+              Serial Number (from sticker label)
             </label>
             <input
               type="text"
               id="serial"
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-input px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Enter device serial number"
+              className="block w-full font-mono uppercase rounded-xl border border-input bg-background px-3 py-2 text-xs shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="e.g. AB-S3-2026-0001"
               required
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enter the serial number printed on the back of your AutoBell controller or box.
+          </div>
+
+          <div>
+            <label htmlFor="pin" className="block text-xs font-semibold text-muted-foreground mb-1">
+              6-Digit Claim PIN
+            </label>
+            <input
+              type="text"
+              id="pin"
+              maxLength={7}
+              value={claimPin}
+              onChange={(e) => setClaimPin(e.target.value)}
+              className="block w-full font-mono tracking-widest text-center text-lg font-bold rounded-xl border border-input bg-background px-3 py-1.5 shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="648291"
+              required
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Printed on the label on the back of the controller and on the outside of your retail box.
             </p>
-            <div className="mt-2 rounded-md bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">
-              🎁 <strong>1-Year Free Cloud Service:</strong> Every genuine AutoBell comes with 12 months of free cloud scheduling, automatic ringing, and remote control upon activation.
-            </div>
+          </div>
+
+          <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 text-[11px] text-emerald-700 dark:text-emerald-300 flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+            <span>
+              <strong>Instant Zero-Touch Activation:</strong> Submitting a valid Serial Number and Claim PIN automatically activates 12 Months Complimentary Cloud Service.
+            </span>
           </div>
 
           {error && (
-            <div className="text-sm text-red-600">
+            <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 p-2.5 rounded-lg">
               {error}
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-2.5 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              className="rounded-xl border border-input bg-background px-4 py-2 text-xs font-medium text-foreground hover:bg-muted"
               disabled={isLoading}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50 shadow-md shadow-primary/20"
               disabled={isLoading}
             >
-              {isLoading ? 'Registering...' : 'Register Device'}
+              {isLoading ? 'Activating...' : 'Activate Device'}
             </button>
           </div>
         </form>

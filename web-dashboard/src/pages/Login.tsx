@@ -17,10 +17,13 @@ export default function Login() {
 
   useEffect(() => {
     if (!user || authLoading) return
+    const pendingClaim = localStorage.getItem('autobell_pending_claim')
     if (role === 'super_admin') {
       navigate('/super-admin', { replace: true })
     } else if (role === 'partner') {
       navigate('/partner', { replace: true })
+    } else if (pendingClaim) {
+      navigate('/setup', { replace: true })
     } else {
       navigate('/dashboard', { replace: true })
     }
@@ -221,7 +224,10 @@ export default function Login() {
 
             <div className="text-center mt-4">
               <p className="text-sm text-muted-foreground">
-                Access is restricted to authorized personnel only.
+                New customer?{' '}
+                <Link to="/register" className="font-semibold text-primary hover:underline">
+                  Register your school and claim your AutoBell.
+                </Link>
               </p>
             </div>
           </form>
