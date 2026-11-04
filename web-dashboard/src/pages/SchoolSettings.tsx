@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseUrl } from '@/lib/supabase'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Building, MapPin, Check, Image as ImageIcon, Volume2, Play, Square, Music } from 'lucide-react'
+import { Save, Building, MapPin, Check, Image as ImageIcon, Volume2, Play, Square, Music, Plus, Loader2, X, Trash2, AlertTriangle } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { DeleteSchoolModal } from '@/components/DeleteSchoolModal'
 import { themes } from '@/lib/themes'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -32,10 +34,12 @@ type SettingsFormValues = z.infer<typeof settingsSchema>
 
 export default function SchoolSettings() {
   const { schoolId, role } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [playingPreId, setPlayingPreId] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const preAudioRef = useRef<HTMLAudioElement | null>(null)
   const canEdit = role === 'admin'
 
@@ -81,7 +85,7 @@ export default function SchoolSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('schools')
-        .select('name, campus_name, address, logo_url, theme_color, theme_mode, quiet_hours_enabled, quiet_hours_disable_from, quiet_hours_enable_at, pre_announcement_enabled, default_pre_announcement_id, pre_announcement_delay_seconds, pre_announcement_volume, default_tts_gender, default_tts_language')
+        .select('id, name, campus_name, address, logo_url, theme_color, theme_mode, quiet_hours_enabled, quiet_hours_disable_from, quiet_hours_enable_at, pre_announcement_enabled, default_pre_announcement_id, pre_announcement_delay_seconds, pre_announcement_volume, default_tts_gender, default_tts_language')
         .eq('id', schoolId)
         .single()
       
@@ -105,6 +109,11 @@ export default function SchoolSettings() {
     }
   })
 
+  const [showUploadChimeModal, setShowUploadChimeModal] = useState(false)
+  const [newChimeTitle, setNewChimeTitle] = useState('')
+  const [newChimeFile, setNewChimeFile] = useState<File | null>(null)
+  const [isUploadingChime, setIsUploadingChime] = useState(false)
+
   const togglePrePlay = (soundUrl: string, soundId: string) => {
     if (playingPreId === soundId) {
       preAudioRef.current?.pause()
@@ -113,7 +122,11 @@ export default function SchoolSettings() {
       if (preAudioRef.current) {
         preAudioRef.current.pause()
       }
-      const audio = new Audio(soundUrl)
+      const fullUrl = soundUrl.startsWith('/storage/') 
+        ? `${supabaseUrl}${soundUrl}` 
+        : soundUrl
+
+      const audio = new Audio(fullUrl)
       audio.onended = () => setPlayingPreId(null)
       audio.play().catch(e => {
         console.error('Audio play error:', e)
@@ -121,6 +134,79 @@ export default function SchoolSettings() {
       })
       preAudioRef.current = audio
       setPlayingPreId(soundId)
+    }
+  }
+
+  const handleUploadChimeInSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newChimeFile) {
+      toast.error('Please select an MP3 chime file')
+      return
+    }
+    if (!newChimeTitle.trim()) {
+      toast.error('Please enter a chime title')
+      return
+    }
+
+    try {
+      setIsUploadingChime(true)
+      const fileExt = newChimeFile.name.split('.').pop() || 'mp3'
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`
+      const filePath = `library/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('pre-announcements')
+        .upload(filePath, newChimeFile, { contentType: newChimeFile.type || 'audio/mpeg', upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: publicUrlData } = supabase.storage
+        .from('pre-announcements')
+        .getPublicUrl(filePath)
+
+      const fileUrl = publicUrlData.publicUrl
+
+      let durationMs = 3000
+      try {
+        const audioObj = new Audio(URL.createObjectURL(newChimeFile))
+        await new Promise((resolve) => {
+          audioObj.onloadedmetadata = () => {
+            durationMs = Math.round(audioObj.duration * 1000)
+            resolve(true)
+          }
+          audioObj.onerror = () => resolve(false)
+        })
+      } catch {
+        // ignore
+      }
+
+      const { data: createdChime, error: rpcError } = await supabase.rpc('manage_pre_announcement_sound', {
+        p_action: 'ADD',
+        p_title: newChimeTitle.trim(),
+        p_file_url: fileUrl,
+        p_file_path: filePath,
+        p_duration_ms: durationMs
+      })
+
+      if (rpcError) throw rpcError
+
+      const createdId = createdChime?.id || (createdChime as any)?.[0]?.id
+      queryClient.invalidateQueries({ queryKey: ['pre_announcement_sounds_active'] })
+      queryClient.invalidateQueries({ queryKey: ['pre_announcement_sounds_all'] })
+
+      if (createdId) {
+        setValue('defaultPreAnnouncementId', createdId, { shouldDirty: true })
+      }
+
+      toast.success('Chime uploaded and selected as default!')
+      setShowUploadChimeModal(false)
+      setNewChimeTitle('')
+      setNewChimeFile(null)
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err?.message || 'Failed to upload chime')
+    } finally {
+      setIsUploadingChime(false)
     }
   }
 
@@ -472,10 +558,29 @@ export default function SchoolSettings() {
                     <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2">
                       {/* Default Sound Selector Grid */}
                       <div>
-                        <label className="block text-sm font-medium text-foreground mb-2">Default Pre-Announcement Sound</label>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2.5">
+                          <label className="block text-sm font-medium text-foreground">Default Pre-Announcement Sound</label>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowUploadChimeModal(true)}
+                              className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-semibold"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Upload Custom Chime
+                            </button>
+                            <Link
+                              to="/dashboard/audio"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                            >
+                              Audio Manager →
+                            </Link>
+                          </div>
+                        </div>
+
                         {preAnnouncementSounds.length === 0 ? (
                           <div className="p-4 rounded-lg bg-muted/40 border border-border text-xs text-muted-foreground">
-                            No pre-announcement sounds uploaded by Super Admin yet. Default quiet chime will be used.
+                            No pre-announcement sounds uploaded yet. Click "Upload Custom Chime" above to add your school's signature chime.
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -689,6 +794,132 @@ export default function SchoolSettings() {
           </div>
         </div>
       </div>
+
+      {/* Danger Zone: Delete School (Super Admin / School Admin) */}
+      {(role === 'super_admin' || role === 'admin') && school && (
+        <div className="mt-8 pt-6 border-t border-destructive/20">
+          <div className="md:grid md:grid-cols-3 md:gap-6">
+            <div className="md:col-span-1">
+              <div className="px-4 sm:px-0">
+                <h3 className="text-lg font-medium leading-6 text-destructive flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Danger Zone
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Irreversible actions for this school campus and all associated configurations.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 md:mt-0 md:col-span-2">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 shadow-sm space-y-3">
+                <h4 className="text-sm font-bold text-destructive">Delete School Campus</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Permanently delete <strong className="text-foreground">{school.name}</strong>, including all scheduled bells, timetable profiles, audio bell files, and broadcast rules. To prevent accidental data loss, this action requires passing a 2-prompt safety verification.
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteModal(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg text-white bg-destructive hover:bg-destructive/90 transition-all shadow-sm shadow-destructive/20"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete School ({school.name})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUploadChimeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-left">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                  <Volume2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">Upload Custom Chime</h3>
+                  <p className="text-xs text-muted-foreground">Add to library and auto-select as default chime</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUploadChimeModal(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  Chime Title / Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. My Campus Chime"
+                  value={newChimeTitle}
+                  onChange={(e) => setNewChimeTitle(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  MP3 Audio File *
+                </label>
+                <input
+                  type="file"
+                  accept="audio/mp3,audio/mpeg,audio/wav,.mp3,.wav"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) {
+                      setNewChimeFile(f)
+                      if (!newChimeTitle) {
+                        setNewChimeTitle(f.name.replace(/\.[^/.]+$/, ''))
+                      }
+                    }
+                  }}
+                  className="w-full rounded-lg border border-input bg-background p-2 text-xs text-foreground file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadChimeModal(false)}
+                  className="px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUploadChimeInSettings}
+                  disabled={isUploadingChime || !newChimeFile || !newChimeTitle.trim()}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm disabled:opacity-50"
+                >
+                  {isUploadingChime && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {isUploadingChime ? 'Uploading...' : 'Upload & Select'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete School Multi-Prompt Confirmation Modal */}
+      <DeleteSchoolModal
+        isOpen={showDeleteModal}
+        school={school ? { id: school.id, name: school.name, campus_name: school.campus_name } : null}
+        onClose={() => setShowDeleteModal(false)}
+        onSuccess={(deletedName) => {
+          toast.success(`School "${deletedName}" was successfully deleted.`)
+          navigate(role === 'super_admin' ? '/super-admin/schools' : '/dashboard')
+        }}
+      />
     </form>
   )
 }

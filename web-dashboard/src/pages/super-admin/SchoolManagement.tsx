@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Plus, Building, Mail, Lock, MapPin, Wifi, WifiOff, Search, Settings, X, ChevronLeft, ChevronRight, LogIn } from 'lucide-react'
+import { Plus, Building, Mail, Lock, MapPin, Wifi, WifiOff, Search, Settings, X, ChevronLeft, ChevronRight, LogIn, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
+import { DeleteSchoolModal } from '@/components/DeleteSchoolModal'
 
-const ONLINE_TIMEOUT_MS = 15 * 60 * 1000
+const ONLINE_TIMEOUT_MS = 5 * 60 * 1000
 
 type School = {
   id: string
@@ -54,6 +55,9 @@ export default function SchoolManagement() {
   })
   const [editError, setEditError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Delete School Multi-Prompt State
+  const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null)
 
   const { data: schools = [] } = useQuery({
     queryKey: ['schools'],
@@ -531,6 +535,14 @@ export default function SchoolManagement() {
                     >
                       <Settings className="h-5 w-5" />
                     </button>
+
+                    <button
+                      onClick={() => setSchoolToDelete(school)}
+                      className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                      title="Delete school"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               </li>
@@ -717,6 +729,31 @@ export default function SchoolManagement() {
                     <div className="w-11 h-6 bg-muted border border-input rounded-full peer peer-focus:ring-2 peer-focus:ring-primary/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-destructive peer-checked:border-destructive"></div>
                   </label>
                 </div>
+
+                {/* Danger Zone: Delete School */}
+                <div className="p-4 bg-destructive/5 rounded-lg border border-destructive/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-semibold text-destructive flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4" />
+                      Danger Zone: Delete School
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Permanently delete this school, all schedules, audio files, and unlink devices.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const toDelete = editingSchool
+                      setEditingSchool(null)
+                      setSchoolToDelete(toDelete)
+                    }}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-white bg-destructive hover:bg-destructive/90 rounded-md transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete School
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
@@ -739,6 +776,20 @@ export default function SchoolManagement() {
           </div>
         </div>
       )}
+
+      {/* Delete School Multi-Prompt Confirmation Modal */}
+      <DeleteSchoolModal
+        isOpen={!!schoolToDelete}
+        school={schoolToDelete}
+        onClose={() => setSchoolToDelete(null)}
+        onSuccess={(deletedSchoolName) => {
+          setNotification({
+            type: 'success',
+            message: `School "${deletedSchoolName}" and all associated records were successfully deleted.`
+          })
+          setTimeout(() => setNotification(null), 4000)
+        }}
+      />
     </div>
   )
 }
