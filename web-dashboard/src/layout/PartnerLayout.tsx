@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 
 export default function PartnerLayout() {
-  const { signOut, user } = useAuth()
+  const { signOut, user, isInspecting } = useAuth()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -26,7 +26,10 @@ export default function PartnerLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans">
+    <div className={cn(
+      "flex h-screen bg-background text-foreground overflow-hidden font-sans",
+      isInspecting && "pt-10"
+    )}>
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">

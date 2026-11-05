@@ -2282,55 +2282,61 @@ export default function InventoryManagement() {
         device={selectedStickerDevice}
       />
 
-      {/* Hidden Batch Print Container (Rendered during native window.print()) */}
-      <div className="hidden print:block autobell-batch-print-sheet">
-        <style>{`
-          @media print {
-            body * {
-              visibility: hidden !important;
+      {/* Hidden Batch Print Container (Rendered during native window.print() ONLY when batch printing selected items and modal is closed) */}
+      {!isStickerModalOpen && selectedStickerCount > 0 && (
+        <div className="hidden print:block autobell-batch-print-sheet">
+          <style>{`
+            @media print {
+              html, body, #root, .h-screen, [class*="overflow-"] {
+                height: auto !important;
+                overflow: visible !important;
+                position: static !important;
+              }
+              body * {
+                visibility: hidden !important;
+              }
+              .autobell-batch-print-sheet, .autobell-batch-print-sheet * {
+                visibility: visible !important;
+              }
+              .autobell-batch-print-sheet {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 16px !important;
+                padding: 4mm !important;
+                background: white !important;
+              }
+              .autobell-batch-print-item {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                margin-bottom: 8px !important;
+              }
+              @page {
+                size: auto;
+                margin: 4mm;
+              }
             }
-            .autobell-batch-print-sheet, .autobell-batch-print-sheet * {
-              visibility: visible !important;
-            }
-            .autobell-batch-print-sheet {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              display: grid !important;
-              grid-template-columns: repeat(2, 1fr) !important;
-              gap: 16px !important;
-              padding: 4mm !important;
-              background: white !important;
-            }
-            .autobell-batch-print-item {
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-              margin-bottom: 8px !important;
-            }
-            @page {
-              size: auto;
-              margin: 4mm;
-            }
-          }
-        `}</style>
-        <div className="grid grid-cols-2 gap-4">
-          {(selectedStickerCount > 0
-            ? filteredStickerList.filter((d) => selectedStickerIds[d.id])
-            : filteredStickerList
-          ).map((dev) => (
-            <div key={dev.id} className="autobell-batch-print-item mb-4">
-              <DeviceSticker
-                serialNumber={dev.serial_number}
-                macAddress={dev.mac_address}
-                claimPin={dev.claim_pin}
-                modelName={dev.board_type}
-                schoolName={dev.school_name}
-              />
-            </div>
-          ))}
+          `}</style>
+          <div className="grid grid-cols-2 gap-4">
+            {filteredStickerList
+              .filter((d) => selectedStickerIds[d.id])
+              .map((dev) => (
+                <div key={dev.id} className="autobell-batch-print-item mb-4">
+                  <DeviceSticker
+                    serialNumber={dev.serial_number}
+                    macAddress={dev.mac_address}
+                    claimPin={dev.claim_pin}
+                    modelName={dev.board_type}
+                    schoolName={dev.school_name}
+                  />
+                </div>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

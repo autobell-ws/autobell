@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 import { exportToCSV, triggerPrint, type ReportColumn } from '@/lib/reportingEngine'
 import { FileText, Download, Printer, Filter, Calendar, RefreshCw } from 'lucide-react'
 
 type ReportType = 'audit' | 'devices' | 'schedules' | 'users'
+
+interface ReportsManagerProps {
+  viewMode?: 'super_admin' | 'school'
+}
 
 interface AuditRecord {
   id: string
@@ -33,7 +38,10 @@ interface ScheduleRecord {
   schools?: { name: string }
 }
 
-export default function ReportsManager() {
+export default function ReportsManager({ viewMode }: ReportsManagerProps = {}) {
+  const { role, schoolId } = useAuth()
+  const isSuperAdmin = viewMode === 'super_admin' || (role === 'super_admin' && !schoolId)
+
   const [activeReport, setActiveReport] = useState<ReportType>('audit')
   const [data, setData] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState<boolean>(false)
@@ -46,6 +54,7 @@ export default function ReportsManager() {
     try {
       if (activeReport === 'audit') {
         let query = supabase.from('audit_logs').select('*, schools(name)').order('created_at', { ascending: false }).limit(100)
+        if (!isSuperAdmin && schoolId) query = query.eq('school_id', schoolId)
         if (dateFrom) query = query.gte('created_at', dateFrom)
         if (dateTo) query = query.lte('created_at', dateTo)
         const { data: res } = await query
@@ -53,6 +62,7 @@ export default function ReportsManager() {
 
       } else if (activeReport === 'devices') {
         let query = supabase.from('bell_devices').select('*, bell_profiles(name), schools(name)').order('name', { ascending: true })
+        if (!isSuperAdmin && schoolId) query = query.eq('school_id', schoolId)
         if (statusFilter !== 'all') query = query.eq('status', statusFilter)
         const { data: res } = await query
         const formatted = (res || []).map((row: any) => ({
@@ -63,11 +73,15 @@ export default function ReportsManager() {
         setData(formatted || [])
 
       } else if (activeReport === 'schedules') {
-        const { data: res } = await supabase.from('bell_times').select('*, schools(name)').order('time', { ascending: true }).limit(100)
+        let query = supabase.from('bell_times').select('*, schools(name)').order('time', { ascending: true }).limit(100)
+        if (!isSuperAdmin && schoolId) query = query.eq('school_id', schoolId)
+        const { data: res } = await query
         setData((res as unknown as Record<string, unknown>[]) || [])
 
       } else if (activeReport === 'users') {
-        const { data: res } = await supabase.from('users').select('*, schools(name)').order('created_at', { ascending: false })
+        let query = supabase.from('users').select('*, schools(name)').order('created_at', { ascending: false })
+        if (!isSuperAdmin && schoolId) query = query.eq('school_id', schoolId)
+        const { data: res } = await query
         setData((res as unknown as Record<string, unknown>[]) || [])
       }
     } catch (err) {
@@ -75,7 +89,7 @@ export default function ReportsManager() {
     } finally {
       setLoading(false)
     }
-  }, [activeReport, dateFrom, dateTo, statusFilter])
+  }, [activeReport, dateFrom, dateTo, statusFilter, isSuperAdmin, schoolId])
 
   useEffect(() => {
     fetchReportData()

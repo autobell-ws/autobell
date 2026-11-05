@@ -99,7 +99,7 @@ type Payment = {
 export default function PartnerManagement() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { impersonatePartner } = useAuth()
+  const { startPartnerInspection } = useAuth()
   const [activeTab, setActiveTab] = useState<'partners' | 'tiers' | 'leads' | 'commissions'>('partners')
 
   // Search & Pagination States
@@ -616,11 +616,11 @@ export default function PartnerManagement() {
                       {partner.status === 'active' && (
                         <button
                           onClick={() => {
-                            impersonatePartner(partner.id, partner.user_id)
+                            startPartnerInspection(partner.id)
                             navigate('/partner')
                           }}
                           className="inline-flex items-center justify-center p-1.5 text-indigo-500 hover:bg-indigo-500/10 rounded-md transition-colors"
-                          title="Impersonate Partner"
+                          title="Inspect Partner Portal"
                         >
                           <LogIn className="h-4.5 w-4.5" />
                         </button>

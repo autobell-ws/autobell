@@ -18,7 +18,7 @@
  * Includes rate-limiting and connection guards to prevent memory fragmentation and heap exhaustion.
  */
 
-typedef std::function<void(const char* command, JsonObject& payload)> RealtimeCommandCallback;
+typedef std::function<void(const char* command, JsonObject& payload, const char* cmdId)> RealtimeCommandCallback;
 typedef std::function<void()> RealtimeScheduleUpdateCallback;
 
 class RealtimeClient {
@@ -162,7 +162,6 @@ vepuoxtGzi4CZ68zJpiq1UvSqTbFJjtbD4seiMHl
         esp_websocket_client_config_t ws_cfg = {};
         ws_cfg.uri = _wsUri.c_str();
         ws_cfg.cert_pem = root_ca;
-        ws_cfg.cert_len = sizeof(root_ca);
         ws_cfg.disable_auto_reconnect = false;
         ws_cfg.pingpong_timeout_sec = 20;
         ws_cfg.buffer_size = 4096;
@@ -208,12 +207,41 @@ vepuoxtGzi4CZ68zJpiq1UvSqTbFJjtbD4seiMHl
         }
     }
 
+    void setDeviceDbId(const String& id) {
+        _deviceDbId = id;
+    }
+
     bool isConnected() const {
         return _isConnected;
     }
 
     void loop() {
         if (!_isRunning || !_client) return;
+
+        // 1. Dispatch pending command safely on the main Arduino thread (loopTask)
+        if (_queuedCommand.pending) {
+            _queuedCommand.pending = false;
+            if (_commandCallback) {
+                JsonDocument pDoc;
+                JsonObject payloadObj;
+                if (_queuedCommand.payloadJson.length() > 0) {
+                    deserializeJson(pDoc, _queuedCommand.payloadJson);
+                    payloadObj = pDoc.as<JsonObject>();
+                }
+                Serial.printf("[Realtime] Dispatching command on main loop: '%s' (id=%s)\n",
+                              _queuedCommand.cmd.c_str(), _queuedCommand.cmdId.c_str());
+                _commandCallback(_queuedCommand.cmd.c_str(), payloadObj, _queuedCommand.cmdId.c_str());
+            }
+        }
+
+        // 2. Dispatch pending schedule sync safely on the main thread
+        if (_pendingScheduleSync) {
+            _pendingScheduleSync = false;
+            if (_scheduleCallback) {
+                Serial.println("[Realtime] Dispatching schedule sync on main loop");
+                _scheduleCallback();
+            }
+        }
 
         static unsigned long lastStatusPrint = 0;
         if (millis() - lastStatusPrint >= 5000) {
@@ -240,13 +268,14 @@ vepuoxtGzi4CZ68zJpiq1UvSqTbFJjtbD4seiMHl
     }
 
 private:
-    RealtimeClient() : _client(nullptr), _isConnected(false), _isRunning(false), _lastHeartbeat(0), _lastStartAttempt(0), _refCounter(1) {}
+    RealtimeClient() : _client(nullptr), _isConnected(false), _isRunning(false), _lastHeartbeat(0), _lastStartAttempt(0), _refCounter(1), _pendingScheduleSync(false) {}
 
     esp_websocket_client_handle_t _client;
     String _supabaseUrl;
     const char* _anonKey;
     String _macAddress;
     String _cleanMac;
+    String _deviceDbId;
     String _schoolId;
     String _wsUri;
     bool _isConnected;
@@ -257,6 +286,29 @@ private:
 
     RealtimeCommandCallback _commandCallback;
     RealtimeScheduleUpdateCallback _scheduleCallback;
+
+    struct QueuedRealtimeCommand {
+        volatile bool pending = false;
+        String cmd;
+        String cmdId;
+        String payloadJson;
+    };
+
+    QueuedRealtimeCommand _queuedCommand;
+    volatile bool _pendingScheduleSync;
+
+    void queueCommand(const char* cmdName, JsonObject& cmdPayload, const char* cmdId) {
+        if (!cmdName) return;
+        _queuedCommand.cmd = String(cmdName);
+        _queuedCommand.cmdId = cmdId ? String(cmdId) : "";
+        _queuedCommand.payloadJson = "";
+        if (!cmdPayload.isNull()) {
+            serializeJson(cmdPayload, _queuedCommand.payloadJson);
+        }
+        _queuedCommand.pending = true;
+        Serial.printf("[Realtime] Command queued for main loop: '%s' (id=%s)\n", 
+                      _queuedCommand.cmd.c_str(), _queuedCommand.cmdId.c_str());
+    }
 
     static void _eventHandler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data) {
         RealtimeClient* self = static_cast<RealtimeClient*>(handler_args);
@@ -412,15 +464,22 @@ private:
             }
 
             const char* cmdName = nullptr;
+            const char* cmdId = nullptr;
             JsonObject cmdPayload;
 
             if (payloadDoc.is<JsonObject>()) {
                 JsonObject root = payloadDoc.as<JsonObject>();
+                if (root.containsKey("id")) {
+                    cmdId = root["id"].as<const char*>();
+                }
                 if (root.containsKey("command")) {
                     cmdName = root["command"].as<const char*>();
                 }
                 if (root.containsKey("payload") && root["payload"].is<JsonObject>()) {
                     cmdPayload = root["payload"].as<JsonObject>();
+                    if (!cmdId && cmdPayload.containsKey("id")) {
+                        cmdId = cmdPayload["id"].as<const char*>();
+                    }
                 } else {
                     cmdPayload = root;
                 }
@@ -430,9 +489,10 @@ private:
                 cmdName = userEvent.c_str();
             }
 
-            if (cmdName && _commandCallback) {
-                Serial.printf("[Realtime] >>> Instant Binary Broadcast Command: '%s' <<<\n", cmdName);
-                _commandCallback(cmdName, cmdPayload);
+            if (cmdName) {
+                Serial.printf("[Realtime] >>> Instant Binary Broadcast Command: '%s' (id=%s) <<<\n", 
+                              cmdName, cmdId ? cmdId : "none");
+                queueCommand(cmdName, cmdPayload, cmdId ? cmdId : "");
             }
         }
     }
@@ -485,10 +545,18 @@ private:
             if (payload.is<JsonObject>()) {
                 JsonObject p = payload.as<JsonObject>();
                 const char* cmdName = nullptr;
+                const char* cmdId = nullptr;
                 JsonObject cmdPayload;
+
+                if (p.containsKey("id")) {
+                    cmdId = p["id"].as<const char*>();
+                }
 
                 if (p.containsKey("payload") && p["payload"].is<JsonObject>()) {
                     JsonObject inner = p["payload"].as<JsonObject>();
+                    if (inner.containsKey("id")) {
+                        cmdId = inner["id"].as<const char*>();
+                    }
                     if (inner.containsKey("command")) {
                         cmdName = inner["command"].as<const char*>();
                     }
@@ -506,9 +574,10 @@ private:
                     cmdName = p["event"].as<const char*>();
                 }
 
-                if (cmdName && _commandCallback) {
-                    Serial.printf("[Realtime] >>> Instant Text Broadcast: '%s' <<<\n", cmdName);
-                    _commandCallback(cmdName, cmdPayload);
+                if (cmdName) {
+                    Serial.printf("[Realtime] >>> Instant Text Broadcast: '%s' (id=%s) <<<\n", 
+                                  cmdName, cmdId ? cmdId : "none");
+                    queueCommand(cmdName, cmdPayload, cmdId ? cmdId : "");
                     return;
                 }
             }
@@ -518,28 +587,37 @@ private:
         if (strcmp(event, "command") == 0 || strcmp(event, "RING") == 0 || strcmp(event, "PLAY_URL") == 0 ||
             strcmp(event, "TTS") == 0 || strcmp(event, "VOICE_NOTE") == 0) {
             const char* cmdName = event;
+            const char* cmdId = nullptr;
             JsonObject cmdPayload;
             if (payload.is<JsonObject>()) {
                 JsonObject p = payload.as<JsonObject>();
+                if (p.containsKey("id")) {
+                    cmdId = p["id"].as<const char*>();
+                }
                 if (p.containsKey("command")) {
                     cmdName = p["command"].as<const char*>();
                 }
                 cmdPayload = p.containsKey("payload") && p["payload"].is<JsonObject>() ? p["payload"].as<JsonObject>() : p;
             }
-            if (_commandCallback) {
-                Serial.printf("[Realtime] >>> Instant Command: '%s' <<<\n", cmdName);
-                _commandCallback(cmdName, cmdPayload);
-                return;
-            }
+            Serial.printf("[Realtime] >>> Instant Command: '%s' (id=%s) <<<\n", cmdName, cmdId ? cmdId : "none");
+            queueCommand(cmdName, cmdPayload, cmdId ? cmdId : "");
+            return;
         }
 
-        // Format 3: Postgres change on command_queue (INSERT)
-        if (strcmp(event, "INSERT") == 0 && String(topic).indexOf("command_queue") != -1) {
+        // Format 3: Postgres change on command_queue (INSERT or postgres_changes)
+        if ((strcmp(event, "postgres_changes") == 0 || strcmp(event, "INSERT") == 0) && String(topic).indexOf("command_queue") != -1) {
             JsonObject record;
             if (payload.is<JsonObject>()) {
                 JsonObject p = payload.as<JsonObject>();
                 if (p.containsKey("data") && p["data"].is<JsonObject>()) {
                     JsonObject d = p["data"].as<JsonObject>();
+                    if (d.containsKey("type")) {
+                        String changeType = d["type"].as<String>();
+                        if (changeType != "INSERT") {
+                            // Ignore UPDATE (our own ACK) or DELETE events to prevent recursive ACK storm!
+                            return;
+                        }
+                    }
                     if (d.containsKey("record") && d["record"].is<JsonObject>()) {
                         record = d["record"].as<JsonObject>();
                     }
@@ -548,26 +626,48 @@ private:
                 }
             }
             if (!record.isNull()) {
-                const char* cmd = record["command"].as<const char*>();
+                if (record.containsKey("status")) {
+                    String stat = record["status"].as<String>();
+                    if (stat != "pending") {
+                        return;
+                    }
+                }
+                String devId = "";
+                if (record.containsKey("device_id")) {
+                    devId = record["device_id"].as<String>();
+                }
+                // If device_id is present, verify it matches our device
+                if (devId.length() > 0 && _deviceDbId.length() > 0 && devId != _deviceDbId && devId != _macAddress && devId != _cleanMac) {
+                    Serial.printf("[Realtime] Command for other device (%s). Skipping.\n", devId.c_str());
+                    return;
+                }
+
+                String cmdStr = "";
+                if (record.containsKey("command")) {
+                    cmdStr = record["command"].as<String>();
+                }
+                String cmdIdStr = "";
+                if (record.containsKey("id")) {
+                    cmdIdStr = record["id"].as<String>();
+                }
                 JsonObject cmdPayload = record["payload"].as<JsonObject>();
-                if (cmd && _commandCallback) {
-                    Serial.printf("[Realtime] >>> Instant Postgres INSERT on command_queue: '%s' <<<\n", cmd);
-                    _commandCallback(cmd, cmdPayload);
+                if (cmdStr.length() > 0) {
+                    Serial.printf("[Realtime] >>> Instant Postgres INSERT on command_queue: '%s' (id=%s) <<<\n", 
+                                  cmdStr.c_str(), cmdIdStr.c_str());
+                    queueCommand(cmdStr.c_str(), cmdPayload, cmdIdStr.c_str());
                     return;
                 }
             }
         }
 
-        // Format 4: Schedule or bell_times modified (INSERT/UPDATE/DELETE or schedule_updated)
+        // Format 4: Schedule or bell_times modified (INSERT/UPDATE/DELETE or postgres_changes or schedule_updated)
         static unsigned long lastScheduleCallbackTrigger = 0;
         if (strcmp(event, "schedule_updated") == 0 || 
-            ((strcmp(event, "INSERT") == 0 || strcmp(event, "UPDATE") == 0 || strcmp(event, "DELETE") == 0) && String(topic).indexOf("bell_times") != -1)) {
+            ((strcmp(event, "postgres_changes") == 0 || strcmp(event, "INSERT") == 0 || strcmp(event, "UPDATE") == 0 || strcmp(event, "DELETE") == 0) && String(topic).indexOf("bell_times") != -1)) {
             if (millis() - lastScheduleCallbackTrigger >= 10000) {
                 lastScheduleCallbackTrigger = millis();
                 Serial.println("[Realtime] Schedule modification detected! Triggering one-time sync...");
-                if (_scheduleCallback) {
-                    _scheduleCallback();
-                }
+                _pendingScheduleSync = true;
             }
             return;
         }

@@ -20,6 +20,9 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 #include <vector>
+#include <lwip/dns.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 #include "RealtimeClient.h"
 
 // ==========================================
@@ -83,9 +86,9 @@ char SUPABASE_KEY[300] =
 // Settings
 const long UTC_OFFSET_SEC = 18000; // GMT+5 for Pakistan
 const unsigned long SCHEDULE_SYNC_INTERVAL = 5 * 60 * 1000;
-const unsigned long COMMAND_POLL_INTERVAL = 30 * 1000; // 30s offline/disconnected fallback
+const unsigned long COMMAND_POLL_INTERVAL = 10 * 60 * 1000; // 10 min offline/disconnected fallback
 const unsigned long COMMAND_POLL_PASSIVE_INTERVAL = 5 * 60 * 1000; // 5 min passive fallback when WebSocket is connected
-const unsigned long HEARTBEAT_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const unsigned long HEARTBEAT_INTERVAL = 60 * 1000; // 1 minute (ensures dashboard never times out to offline)
 const unsigned long PROVISION_POLL_INTERVAL = 10 * 1000;
 const unsigned long AUDIO_CACHE_SYNC_INTERVAL = 10 * 60 * 1000;
 
@@ -125,6 +128,10 @@ LiquidCrystal_I2C lcd(0x27, 16, 2); // Address 0x27 for 16x2 I2C LCD (Shares RTC
 String lcdPlayingType = "";
 String lcdPlayingDetail = "";
 String lcdBuzzerDetail = "Manual Bell";
+const int BUZZER_LEDC_CHAN = 0;
+const int BUZZER_LEDC_RES = 8;
+static bool buzzerPwmActive = false;
+unsigned long buzzerDurationMs = 3000;
 
 Audio *audio = NULL; // I2S Audio Object (Dynamic for RAM optimization)
 int systemVolume = 30;
@@ -245,7 +252,9 @@ void loadSchedulesFromStorage();
 void updateDeviceLocationOnce();
 void syncAudioCache();
 
-void playBell(String label = "Manual Bell");
+void startBuzzerTone(unsigned int freq = 3000);
+void stopBuzzerTone();
+void playBell(String label = "Manual Bell", int durationSeconds = 3);
 void startStreamPlayback(const String &url);
 void stopStreamPlayback();
 void stopBuzzer(); // Helper to force stop
@@ -397,8 +406,15 @@ void configureWiFiCountryAndPower() {
   // Ensure 802.11 b/g/n protocols are all enabled
   esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
 
+  // Set public DNS servers (Google 8.8.8.8 and Cloudflare 1.1.1.1) to avoid local router DNS failure
+  ip_addr_t dns1, dns2;
+  IP_ADDR4(&dns1, 8, 8, 8, 8);
+  IP_ADDR4(&dns2, 1, 1, 1, 1);
+  dns_setserver(0, &dns1);
+  dns_setserver(1, &dns2);
+
   WiFi.setSleep(false);
-  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  WiFi.setTxPower(WIFI_POWER_17dBm); // 17dBm prevents current spikes that collapse USB 5V VBUS
 }
 
 void onWiFiDiagnosticEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -410,12 +426,20 @@ void onWiFiDiagnosticEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
     Serial.print("[WiFiDiag] IP Address acquired: ");
     Serial.println(WiFi.localIP());
+
+    ip_addr_t dns1, dns2;
+    IP_ADDR4(&dns1, 8, 8, 8, 8);
+    IP_ADDR4(&dns2, 1, 1, 1, 1);
+    dns_setserver(0, &dns1);
+    dns_setserver(1, &dns2);
+    Serial.println("[WiFiDiag] Fallback public DNS set post-DHCP (8.8.8.8, 1.1.1.1)");
   }
 }
 
 void onSecondTick() { scheduleTick = true; }
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector to prevent resets on USB power dips
   uint8_t customBaseMac[6] = {0xE4, 0x05, 0x92, 0x7B, 0x0F, 0xFC};
   esp_base_mac_addr_set(customBaseMac);
 
@@ -465,9 +489,18 @@ void setup() {
   if (storedSupaKey.length() > 0) {
     storedSupaKey.toCharArray(SUPABASE_KEY, 300);
   }
+  deviceDbId = preferences.getString("device_db_id", "");
+  if (deviceDbId.length() > 0) {
+    Serial.println("Loaded persistent deviceDbId: " + deviceDbId);
+    RealtimeClient::getInstance().setDeviceDbId(deviceDbId);
+  }
 
   preAnnouncementEnabled = preferences.getBool("pa_en", true);
   preAnnouncementUrl = preferences.getString("pa_url", "");
+  preAnnouncementUrl.trim();
+  if (preAnnouncementUrl == "null" || preAnnouncementUrl == "undefined") {
+    preAnnouncementUrl = "";
+  }
   preAnnouncementDelaySeconds = preferences.getInt("pa_delay", 3);
 
   pinMode(PIN_LED_STATUS, OUTPUT);
@@ -481,7 +514,7 @@ void setup() {
 #endif
 
   digitalWrite(PIN_LED_STATUS, LOW);
-  stopBuzzer(); // Ensure buzzer is OFF at boot
+  digitalWrite(PIN_BUZZER, LOW); // Ensure buzzer is OFF at boot without premature LEDC call
 
   // Init SNTP BEFORE RTC restore so RTC's settimeofday() takes precedence
   // (configTime resets system clock to epoch; without WiFi, NTP never syncs)
@@ -819,9 +852,9 @@ void setup() {
   }
 
   // Supabase Realtime WebSocket Client Setup
-  RealtimeClient::getInstance().onCommand([](const char* cmd, JsonObject& payload) {
-    Serial.printf("[Realtime] Instant command received: %s\n", cmd);
-    executeCommand(cmd, payload);
+  RealtimeClient::getInstance().onCommand([](const char* cmd, JsonObject& payload, const char* cmdId) {
+    Serial.printf("[Realtime] Instant command received: %s (id=%s)\n", cmd, cmdId ? cmdId : "");
+    executeCommand(cmd, payload, cmdId ? String(cmdId) : "");
   });
 
   RealtimeClient::getInstance().onScheduleUpdate([]() {
@@ -920,12 +953,11 @@ void loop() {
     break;
 
   case PLAY_BUZZER:
-    if (millis() - playStateStartTime >= 3000) {
+    if (millis() - playStateStartTime >= buzzerDurationMs) {
       if (audio && audio->isRunning()) {
         audio->stopSong();
       }
-      noTone(PIN_BUZZER);
-      digitalWrite(PIN_BUZZER, LOW);
+      stopBuzzerTone();
       disableAmp();
       playState = PLAY_IDLE;
       playStateStartTime = millis();
@@ -1016,7 +1048,7 @@ void loop() {
 
   // 5. Active State Tasks
   // Passive fallback: When Realtime WebSocket is connected, poll only once every 5 minutes (300s).
-  // If WebSocket is offline/disconnected, fallback to 30s.
+  // If WebSocket is offline/disconnected, fallback to 10 minutes (600s).
   unsigned long activePollInterval = RealtimeClient::getInstance().isConnected() ? COMMAND_POLL_PASSIVE_INTERVAL : COMMAND_POLL_INTERVAL;
   if (millis() - lastCommandPoll >= activePollInterval) {
     lastCommandPoll = millis();
@@ -1339,6 +1371,11 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
   if (!forcePlay && !preAnnouncementEnabled)
     return false;
 
+  preAnnouncementUrl.trim();
+  if (preAnnouncementUrl == "null" || preAnnouncementUrl == "undefined") {
+    preAnnouncementUrl = "";
+  }
+
   String chimePath = "/chimes/pre_announcement.mp3";
   bool isLocal = false;
   size_t localSize = 0;
@@ -1346,10 +1383,13 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
     File f = LittleFS.open(chimePath, "r");
     if (f) {
       localSize = f.size();
-      if (localSize > 0) {
-        isLocal = true;
-      }
       f.close();
+      if (localSize > 1000) {
+        isLocal = true;
+      } else {
+        Serial.printf("Warning: %s is too small (%u bytes), removing corrupted cache\n", chimePath.c_str(), localSize);
+        LittleFS.remove(chimePath);
+      }
     }
   }
 
@@ -1360,13 +1400,13 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
 
   if (!isLocal && (preAnnouncementUrl.length() == 0 || WiFi.status() != WL_CONNECTED)) {
     Serial.println("Pre-announcement chime not found locally or online. Playing buzzer chime fallback.");
-    tone(PIN_BUZZER, 2500);
+    startBuzzerTone(2500);
     delay(200);
-    noTone(PIN_BUZZER);
+    stopBuzzerTone();
     delay(100);
-    tone(PIN_BUZZER, 3000);
+    startBuzzerTone(3000);
     delay(300);
-    noTone(PIN_BUZZER);
+    stopBuzzerTone();
     if (preAnnouncementDelaySeconds > 0) {
       delay(preAnnouncementDelaySeconds * 1000);
     }
@@ -1417,14 +1457,24 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
 
   unsigned long startWait = millis();
   bool audioHasStarted = false;
-  unsigned long bufferTimeout = isLocal ? 1000 : 8000;
-  while (audio && (millis() - startWait < 15000)) {
+  unsigned long bufferTimeout = isLocal ? 3000 : 10000;
+  int stoppedCount = 0;
+
+  // Allow up to 35s for full chime playback
+  while (audio && (millis() - startWait < 35000)) {
     esp_task_wdt_reset();
     audio->loop();
+
     if (audio->isRunning()) {
       audioHasStarted = true;
+      stoppedCount = 0;
     } else if (audioHasStarted) {
-      break;
+      // Confirm it didn't just hit a temporary buffer refill by checking across multiple iterations
+      stoppedCount++;
+      if (stoppedCount > 25) {
+        Serial.println("Pre-chime playback completed.");
+        break;
+      }
     }
 
     if (!audioHasStarted && (millis() - startWait > bufferTimeout)) {
@@ -1432,6 +1482,7 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
       break;
     }
     yield();
+    // NO delay(1) — audio->loop() runs unthrottled to fill I2S DMA FIFO
   }
 
   if (audioHasStarted) {
@@ -1442,9 +1493,10 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
 
   if (audio) {
     audio->stopSong();
-    // Do NOT deinitAudio() on S3 to prevent I2S driver corruption / heap crash
+    // Flush I2S DMA pipeline so no leftover frames bleed into next audio
     delay(100);
   }
+  disableAmp();
 
   playState = PLAY_IDLE;
   isLocalPlayback = false;
@@ -1456,24 +1508,46 @@ bool playLocalPreAnnouncementChime(bool forcePlay) {
   return true;
 }
 
-void playBell(String label) {
+void startBuzzerTone(unsigned int freq) {
+  (void)freq;
+  buzzerPwmActive = true;
+  digitalWrite(PIN_BUZZER, HIGH);
+  Serial.println("[RELAY] Gong Bell Relay ON (GPIO 15 HIGH)");
+  Serial.flush();
+}
+
+void stopBuzzerTone() {
+  buzzerPwmActive = false;
+  digitalWrite(PIN_BUZZER, LOW);
+  Serial.println("[RELAY] Gong Bell Relay OFF (GPIO 15 LOW)");
+  Serial.flush();
+}
+
+void playBell(String label, int durationSeconds) {
   Serial.println("--- playBell() START --- (" + label + ")");
+  Serial.flush();
 
   // Stop any streaming audio safely
   if (audio && playState == PLAY_STREAMING) {
     if (audio->isRunning())
       audio->stopSong();
   }
+  Serial.println("[RELAY] Step 1: Audio checked"); Serial.flush();
 
-  // Activate Buzzer
-  tone(PIN_BUZZER, 3000);
+  buzzerDurationMs = (durationSeconds > 0) ? ((unsigned long)durationSeconds * 1000) : 3000;
+  Serial.printf("[RELAY] Step 2: Duration set to %lu ms\n", buzzerDurationMs); Serial.flush();
+
+  Serial.println("[RELAY] Step 3: Triggering Relay ON"); Serial.flush();
+  startBuzzerTone(3000);
+  Serial.println("[RELAY] Step 4: Relay ON active"); Serial.flush();
 
   lcdBuzzerDetail = label;
   playState = PLAY_BUZZER;
   playStateStartTime = millis();
   updateLCD();
 
-  Serial.println("Buzzer ON. Waiting 3s...");
+  Serial.printf("Gong Bell Relay ON. Waiting %lu ms...\n", buzzerDurationMs);
+  Serial.flush();
 }
 
 void startStreamPlayback(const String &url) {
@@ -1653,15 +1727,14 @@ void playTTS(String text, String lang) { playTTS(text, lang, ""); }
 
 void testBuzzer() {
   Serial.println("--- testBuzzer() START ---");
-  // Activate Buzzer
-  // digitalWrite(PIN_BUZZER, HIGH);
-  tone(PIN_BUZZER, 3000);
+  buzzerDurationMs = 3000;
+  startBuzzerTone(3000);
 
   playState = PLAY_BUZZER;
   playStateStartTime = millis();
   updateLCD();
 
-  Serial.println("Buzzer Test ON (digitalWrite HIGH)");
+  Serial.println("Buzzer Test ON");
   Serial.println("--- testBuzzer() END ---");
 }
 
@@ -1848,6 +1921,10 @@ void fetchDeviceDetails() {
 
     if (!error && doc.size() > 0) {
       deviceDbId = doc[0]["id"].as<String>();
+      if (deviceDbId.length() > 0) {
+        preferences.putString("device_db_id", deviceDbId);
+        RealtimeClient::getInstance().setDeviceDbId(deviceDbId);
+      }
       String status = doc[0]["status"].as<String>();
 
       // Handle server messages (e.g. warnings about invalid code)
@@ -1919,8 +1996,7 @@ void stopBuzzer() {
   if (audio && audio->isRunning()) {
     audio->stopSong();
   }
-  noTone(PIN_BUZZER);
-  digitalWrite(PIN_BUZZER, LOW); // Ensure pin is low
+  stopBuzzerTone();
   disableAmp();
   if (playState == PLAY_BUZZER) {
     playState = PLAY_IDLE;
@@ -2151,6 +2227,11 @@ void checkSerialCommands() {
     } else if (input == "TEST_PA_CHIME") {
       Serial.println("Triggering Manual Pre-Announcement Playback...");
       playLocalPreAnnouncementChime(true);
+    } else if (input == "CLEAR_PA_CACHE") {
+      Serial.println("Clearing Pre-Announcement Cache...");
+      LittleFS.remove("/chimes/pre_announcement.mp3");
+      preferences.remove("cached_chime");
+      Serial.println("Pre-Announcement Cache Cleared.");
     } else if (input == "TEST_OFFLINE_AUDIO" || input == "TEST_LOCAL_AUDIO") {
       Serial.println("--- TESTING OFFLINE AUDIO PLAYBACK ---");
       File root = LittleFS.open("/audio");
@@ -2296,6 +2377,11 @@ void syncAudioCache() {
 
   std::vector<String> validLocalAudioPaths;
 
+  preAnnouncementUrl.trim();
+  if (preAnnouncementUrl == "null" || preAnnouncementUrl == "undefined") {
+    preAnnouncementUrl = "";
+  }
+
   // 1. Sync pre-announcement chime to LittleFS /chimes/pre_announcement.mp3
   if (preAnnouncementUrl.length() > 0) {
     String chimeLocalPath = "/chimes/pre_announcement.mp3";
@@ -2306,7 +2392,7 @@ void syncAudioCache() {
     if (LittleFS.exists(chimeLocalPath) && cachedChimeUrl == preAnnouncementUrl) {
       File f = LittleFS.open(chimeLocalPath, "r");
       if (f) {
-        if (f.size() > 0) {
+        if (f.size() > 1000) {
           needsChimeDownload = false;
         }
         f.close();
@@ -2336,7 +2422,7 @@ void syncAudioCache() {
         File tf = LittleFS.open(tempChimePath, "r");
         size_t tfSize = tf ? tf.size() : 0;
         if (tf) tf.close();
-        if (tfSize > 0) {
+        if (tfSize > 1000) {
           if (LittleFS.exists(chimeLocalPath)) {
             LittleFS.remove(chimeLocalPath);
           }
@@ -2345,7 +2431,7 @@ void syncAudioCache() {
           Serial.printf("Pre-announcement chime cached successfully (%u bytes)\n", tfSize);
         } else {
           LittleFS.remove(tempChimePath);
-          Serial.println("Pre-announcement chime temp file was empty");
+          Serial.println("Pre-announcement chime temp file was empty or too small (<1KB)");
         }
       } else {
         if (LittleFS.exists(tempChimePath)) {
@@ -2596,18 +2682,22 @@ void logToDatabase(String level, String message) {
 }
 
 void ackCommand(String cmdId) {
+  if (cmdId.length() == 0) return;
   Serial.println("Sending Ack for " + cmdId + "...");
   WiFiClientSecure ackClient;
   ackClient.setInsecure();
-  ackClient.setTimeout(10000);
+  ackClient.setTimeout(5000);
 
   HTTPClient ackHttp;
-  ackHttp.begin(ackClient, String(SUPABASE_URL) + "/rest/v1/rpc/ack_command");
-  ackHttp.addHeader("apikey", SUPABASE_KEY);
-  ackHttp.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-  ackHttp.addHeader("Content-Type", "application/json");
-  ackHttp.POST("{\"p_command_id\": " + cmdId + ", \"p_device_mac\": \"" + deviceMacAddress + "\"}");
-  ackHttp.end();
+  ackHttp.setTimeout(5000);
+  if (ackHttp.begin(ackClient, String(SUPABASE_URL) + "/rest/v1/rpc/ack_command")) {
+    ackHttp.addHeader("apikey", SUPABASE_KEY);
+    ackHttp.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+    ackHttp.addHeader("Content-Type", "application/json");
+    ackHttp.POST("{\"p_command_id\": " + cmdId + ", \"p_device_mac\": \"" + deviceMacAddress + "\"}");
+    ackHttp.end();
+  }
+  ackClient.stop();
 }
 
 void performOTAUpdate(const String &url) {
@@ -2737,8 +2827,84 @@ void performOTAUpdate(const String &url) {
   http.end();
 }
 
+struct SoundExecutionRecord {
+  String key; // URL or text
+  unsigned long timestamp;
+};
+
+static std::vector<String> recentlyExecutedCmdIds;
+static std::vector<SoundExecutionRecord> recentlyExecutedSounds;
+
+static bool isDuplicateCommand(const char* cmd, JsonObject& payload, const String& cmdId) {
+  // 1. Check exact command ID (applies to all commands)
+  if (cmdId.length() > 0) {
+    for (const String& prevId : recentlyExecutedCmdIds) {
+      if (prevId == cmdId) {
+        Serial.printf("[DEDUP] Command ID %s was ALREADY executed. Skipping duplicate run.\n", cmdId.c_str());
+        return true;
+      }
+    }
+  }
+
+  // 2. Check payload audio URL / text for broadcast commands (VOICE_NOTE, TTS, PLAY_URL)
+  if (strcmp(cmd, "VOICE_NOTE") == 0 || strcmp(cmd, "PLAY_URL") == 0 || strcmp(cmd, "TTS") == 0) {
+    String soundKey = "";
+    if (!payload.isNull()) {
+      if (payload.containsKey("url")) soundKey = payload["url"].as<String>();
+      else if (payload.containsKey("audio_url")) soundKey = payload["audio_url"].as<String>();
+      else if (payload.containsKey("text")) soundKey = payload["text"].as<String>();
+    }
+    soundKey.trim();
+    if (soundKey.length() > 0) {
+      unsigned long now = millis();
+      for (const auto& item : recentlyExecutedSounds) {
+        // If the same broadcast payload was played within the last 15 minutes (900,000 ms)
+        if (item.key == soundKey && (now - item.timestamp < 900000UL)) {
+          Serial.printf("[DEDUP] Broadcast payload was already played %lu s ago. Skipping duplicate run.\n",
+                        (now - item.timestamp) / 1000);
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+static void recordCommandExecution(const char* cmd, JsonObject& payload, const String& cmdId) {
+  if (cmdId.length() > 0) {
+    recentlyExecutedCmdIds.push_back(cmdId);
+    if (recentlyExecutedCmdIds.size() > 32) {
+      recentlyExecutedCmdIds.erase(recentlyExecutedCmdIds.begin());
+    }
+  }
+
+  if (strcmp(cmd, "VOICE_NOTE") == 0 || strcmp(cmd, "PLAY_URL") == 0 || strcmp(cmd, "TTS") == 0) {
+    String soundKey = "";
+    if (!payload.isNull()) {
+      if (payload.containsKey("url")) soundKey = payload["url"].as<String>();
+      else if (payload.containsKey("audio_url")) soundKey = payload["audio_url"].as<String>();
+      else if (payload.containsKey("text")) soundKey = payload["text"].as<String>();
+    }
+    soundKey.trim();
+    if (soundKey.length() > 0) {
+      recentlyExecutedSounds.push_back({ soundKey, millis() });
+      if (recentlyExecutedSounds.size() > 16) {
+        recentlyExecutedSounds.erase(recentlyExecutedSounds.begin());
+      }
+    }
+  }
+}
+
 void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
   if (!cmd) return;
+
+  if (isDuplicateCommand(cmd, payload, cmdId)) {
+    Serial.printf("[DEDUP] Duplicate command ignored: %s (id=%s)\n", cmd, cmdId.c_str());
+    return;
+  }
+  recordCommandExecution(cmd, payload, cmdId);
+
   bool executed = false;
 
   bool quietOverride = false;
@@ -2779,8 +2945,12 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       } else if (payload.containsKey("pre_announcement_enabled")) {
         playPreChime = payload["pre_announcement_enabled"].as<bool>();
       }
-      if (payload.containsKey("pre_announcement_url") && payload["pre_announcement_url"].as<String>().length() > 0) {
-        preAnnouncementUrl = payload["pre_announcement_url"].as<String>();
+      if (payload.containsKey("pre_announcement_url")) {
+        String pa = payload["pre_announcement_url"].as<String>();
+        pa.trim();
+        if (pa.length() > 0 && pa != "null" && pa != "undefined") {
+          preAnnouncementUrl = pa;
+        }
       }
       if (payload.containsKey("pre_announcement_delay_seconds")) {
         preAnnouncementDelaySeconds = payload["pre_announcement_delay_seconds"].as<int>();
@@ -2825,9 +2995,13 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       ackCommand(cmdId); // Ack FIRST to release HTTPS connection and avoid SSL conflict
       delay(50); // Yield to lwIP network stack to release TCP/TLS socket
     }
-    executed = false;
-    playLocalPreAnnouncementChime(true); // Play selected pre-announcement chime
-    playBell("Manual Ring"); // Play actual bell chime/buzzer after pre-chime
+    executed = false; // Already acked above! Do not re-ack at bottom while buzzer is active!
+    int duration = 3;
+    if (!payload.isNull() && payload.containsKey("duration")) {
+      duration = payload["duration"].as<int>();
+      if (duration <= 0) duration = 3;
+    }
+    playBell("Manual Ring", duration);
   } else if (strcmp(cmd, "PLAY_URL") == 0) {
     Serial.println("Executing command: PLAY_URL");
     String url = "";
@@ -2843,8 +3017,12 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       } else if (payload.containsKey("pre_announcement_enabled")) {
         playPreChime = payload["pre_announcement_enabled"].as<bool>();
       }
-      if (payload.containsKey("pre_announcement_url") && payload["pre_announcement_url"].as<String>().length() > 0) {
-        preAnnouncementUrl = payload["pre_announcement_url"].as<String>();
+      if (payload.containsKey("pre_announcement_url")) {
+        String pa = payload["pre_announcement_url"].as<String>();
+        pa.trim();
+        if (pa.length() > 0 && pa != "null" && pa != "undefined") {
+          preAnnouncementUrl = pa;
+        }
       }
       if (payload.containsKey("pre_announcement_delay_seconds")) {
         preAnnouncementDelaySeconds = payload["pre_announcement_delay_seconds"].as<int>();
@@ -2913,8 +3091,12 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       } else if (payload.containsKey("pre_announcement_enabled")) {
         playPreChime = payload["pre_announcement_enabled"].as<bool>();
       }
-      if (payload.containsKey("pre_announcement_url") && payload["pre_announcement_url"].as<String>().length() > 0) {
-        preAnnouncementUrl = payload["pre_announcement_url"].as<String>();
+      if (payload.containsKey("pre_announcement_url")) {
+        String pa = payload["pre_announcement_url"].as<String>();
+        pa.trim();
+        if (pa.length() > 0 && pa != "null" && pa != "undefined") {
+          preAnnouncementUrl = pa;
+        }
       }
       if (payload.containsKey("pre_announcement_delay_seconds")) {
         preAnnouncementDelaySeconds = payload["pre_announcement_delay_seconds"].as<int>();
@@ -2978,8 +3160,12 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       } else if (payload.containsKey("pre_announcement_enabled")) {
         playPreChime = payload["pre_announcement_enabled"].as<bool>();
       }
-      if (payload.containsKey("pre_announcement_url") && payload["pre_announcement_url"].as<String>().length() > 0) {
-        preAnnouncementUrl = payload["pre_announcement_url"].as<String>();
+      if (payload.containsKey("pre_announcement_url")) {
+        String pa = payload["pre_announcement_url"].as<String>();
+        pa.trim();
+        if (pa.length() > 0 && pa != "null" && pa != "undefined") {
+          preAnnouncementUrl = pa;
+        }
       }
       if (payload.containsKey("pre_announcement_delay_seconds")) {
         preAnnouncementDelaySeconds = payload["pre_announcement_delay_seconds"].as<int>();
@@ -3023,8 +3209,12 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
     }
   } else if (strcmp(cmd, "TEST_BUZZER") == 0) {
     Serial.println("Executing command: TEST_BUZZER");
+    if (cmdId.length() > 0) {
+      ackCommand(cmdId);
+      delay(50);
+    }
+    executed = false;
     testBuzzer();
-    executed = true;
   } else if (strcmp(cmd, "TEST_AUDIO") == 0) {
     Serial.println("Executing command: TEST_AUDIO");
     if (cmdId.length() > 0) {
@@ -3097,17 +3287,7 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
 
   // Ack
   if (executed && cmdId.length() > 0) {
-    Serial.println("Command Executed. Sending Ack...");
-    WiFiClientSecure ackClient;
-    ackClient.setInsecure();
-    HTTPClient ackHttp;
-    ackHttp.begin(ackClient, String(SUPABASE_URL) + "/rest/v1/rpc/ack_command");
-    ackHttp.addHeader("apikey", SUPABASE_KEY);
-    ackHttp.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-    ackHttp.addHeader("Content-Type", "application/json");
-    ackHttp.POST("{\"p_command_id\": " + cmdId + ", \"p_device_mac\": \"" + deviceMacAddress + "\"}");
-    ackHttp.end();
-
+    ackCommand(cmdId);
     if (strcmp(cmd, "REBOOT") == 0) {
       delay(1000);
       ESP.restart();
@@ -3191,9 +3371,9 @@ void pollCommands() {
   if (code == 200) {
     String response = http.getString();
 
-    // Close connection IMMEDIATELY to free SSL buffers (essential for
-    // subsequent ACK)
+    // Close connection IMMEDIATELY to free SSL buffers
     http.end();
+    client.stop();
 
     if (response.length() == 0) {
       // Empty response is fine if no command, but usually RPC returns valid
@@ -3291,7 +3471,12 @@ void pollCommands() {
 void sendHeartbeat() {
   if (playState != PLAY_IDLE)
     return;
-  if (WiFi.status() != WL_CONNECTED || currentState != STATE_ACTIVE)
+  if (WiFi.status() != WL_CONNECTED)
+    return;
+  if (deviceDbId.length() == 0) {
+    deviceDbId = preferences.getString("device_db_id", "");
+  }
+  if (deviceDbId.length() == 0)
     return;
 
   int inputVoltageMv = -1;
@@ -3311,18 +3496,26 @@ void sendHeartbeat() {
   body += "}";
 
   HTTPClient http;
-  http.begin(String(SUPABASE_URL) +
-             "/rest/v1/rpc/update_heartbeat_with_power");
-  http.addHeader("apikey", SUPABASE_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-  http.addHeader("Content-Type", "application/json");
-  const char *headerKeys[] = {"Date"};
-  http.collectHeaders(headerKeys, 1);
-  http.POST(body);
-  if (http.hasHeader("Date")) {
-    syncTimeFromHttpDate(http.header("Date"));
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
+  if (http.begin(String(SUPABASE_URL) +
+             "/rest/v1/rpc/update_heartbeat_with_power")) {
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+    http.addHeader("Content-Type", "application/json");
+    const char *headerKeys[] = {"Date"};
+    http.collectHeaders(headerKeys, 1);
+    int res = http.POST(body);
+    if (res == 200 || res == 204) {
+      Serial.println("[Heartbeat] Sent successfully: online");
+    } else {
+      Serial.printf("[Heartbeat] Server returned: %d\n", res);
+    }
+    if (http.hasHeader("Date")) {
+      syncTimeFromHttpDate(http.header("Date"));
+    }
+    http.end();
   }
-  http.end();
 }
 
 void updateDeviceLocationOnce() {
@@ -3470,6 +3663,10 @@ void parseSchedules(const JsonDocument &doc) {
     preAnnouncementUrl = doc["pa_url"].as<String>();
   } else if (doc.containsKey("pre_announcement_url")) {
     preAnnouncementUrl = doc["pre_announcement_url"].as<String>();
+  }
+  preAnnouncementUrl.trim();
+  if (preAnnouncementUrl == "null" || preAnnouncementUrl == "undefined") {
+    preAnnouncementUrl = "";
   }
 
   if (doc.containsKey("pa_delay")) {

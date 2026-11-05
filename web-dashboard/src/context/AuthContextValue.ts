@@ -7,17 +7,28 @@ export type AuthContextType = {
   session: Session | null
   user: User | null
   schoolId: string | null
+  partnerId: string | null
   role: AuthRole
+  effectiveRole: AuthRole
   ttsEnabled: boolean
   otaEnabled: boolean
   loading: boolean
   signOut: () => Promise<void>
+  
+  // Inspection State (Super Admin inspecting a specific school/partner)
+  inspectedSchoolId: string | null
+  inspectedPartnerId: string | null
+  isInspecting: boolean
+  startSchoolInspection: (schoolId: string) => void
+  startPartnerInspection: (partnerId: string) => void
+  stopInspection: () => void
+
+  // Backward compatibility aliases
   impersonatedSchoolId: string | null
-  partnerId: string | null
   impersonatedPartnerId: string | null
-  impersonatePartner: (targetPartnerId: string, targetUserId: string) => void
   isImpersonating: boolean
   impersonateSchool: (targetSchoolId: string) => void
+  impersonatePartner: (targetPartnerId: string, targetUserId?: string) => void
   stopImpersonation: () => Promise<void>
 }
 

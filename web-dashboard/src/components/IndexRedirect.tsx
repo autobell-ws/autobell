@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom'
 export function IndexRedirect() {
   const { user, role, loading } = useAuth()
 
-  if (loading) {
+  if (loading || (user && !role)) {
     return <div className="flex h-screen items-center justify-center">Loading...</div>
   }
 

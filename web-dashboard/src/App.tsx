@@ -109,8 +109,8 @@ function App() {
                       <Route path="inventory" element={<InventoryManagement />} />
                       <Route path="backups" element={<SuperAdminBackups />} />
                       <Route path="health" element={<HealthDashboard />} />
-                      <Route path="tickets" element={<TicketManagement />} />
-                      <Route path="reports" element={<ReportsManager />} />
+                      <Route path="tickets" element={<TicketManagement viewMode="super_admin" />} />
+                      <Route path="reports" element={<ReportsManager viewMode="super_admin" />} />
                     </Route>
                   </Route>
 
@@ -123,8 +123,8 @@ function App() {
                       <Route path="bells-and-announcements" element={<PeriodBellsAndAnnouncements />} />
                       <Route path="audio" element={<AudioManager />} />
                       <Route path="broadcast" element={<Broadcast />} />
-                      <Route path="reports" element={<ReportsManager />} />
-                      <Route path="tickets" element={<TicketManagement />} />
+                      <Route path="reports" element={<ReportsManager viewMode="school" />} />
+                      <Route path="tickets" element={<TicketManagement viewMode="school" />} />
                       <Route path="settings" element={<SchoolSettings />} />
                       <Route path="backups" element={<SchoolBackups />} />
                     </Route>

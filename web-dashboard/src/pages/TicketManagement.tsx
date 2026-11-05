@@ -35,8 +35,13 @@ interface SchoolOption {
   name: string
 }
 
-export default function TicketManagement() {
+interface TicketManagementProps {
+  viewMode?: 'super_admin' | 'school'
+}
+
+export default function TicketManagement({ viewMode }: TicketManagementProps = {}) {
   const { role, schoolId } = useAuth()
+  const isSuperAdmin = viewMode === 'super_admin' || (role === 'super_admin' && !schoolId)
   const [tickets, setTickets] = useState<TicketItem[]>([])
   const [schools, setSchools] = useState<SchoolOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,7 +73,7 @@ export default function TicketManagement() {
         .select('*, schools(name)')
         .order('created_at', { ascending: false })
 
-      if (role !== 'super_admin' && schoolId) {
+      if (!isSuperAdmin && schoolId) {
         query = query.eq('school_id', schoolId)
       }
 
@@ -80,17 +85,17 @@ export default function TicketManagement() {
     } finally {
       setLoading(false)
     }
-  }, [role, schoolId])
+  }, [isSuperAdmin, schoolId])
 
   const fetchSchools = useCallback(async () => {
-    if (role !== 'super_admin') return
+    if (!isSuperAdmin) return
     try {
       const { data } = await supabase.from('schools').select('id, name').order('name')
       if (data) setSchools(data as SchoolOption[])
     } catch (err) {
       console.error('Failed to fetch schools:', err)
     }
-  }, [role])
+  }, [isSuperAdmin])
 
   const fetchDevices = useCallback(async () => {
     const targetSchoolId = schoolId || selectedSchoolId
@@ -522,7 +527,7 @@ export default function TicketManagement() {
                 />
               </div>
 
-              {role === 'super_admin' && (
+              {isSuperAdmin && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Target School (Optional)</label>
                   <select

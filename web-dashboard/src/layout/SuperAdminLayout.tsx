@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 export default function SuperAdminLayout() {
-  const { signOut, user, isImpersonating } = useAuth()
+  const { signOut, user, isInspecting, isImpersonating } = useAuth()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -32,7 +32,7 @@ export default function SuperAdminLayout() {
   return (
     <div className={cn(
       "flex h-screen bg-gradient-to-br from-background via-muted to-background text-foreground",
-      isImpersonating && "pt-10"
+      (isInspecting || isImpersonating) && "pt-10"
     )}>
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">

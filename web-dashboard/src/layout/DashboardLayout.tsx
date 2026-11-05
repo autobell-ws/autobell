@@ -17,7 +17,7 @@ interface NotificationItem {
 }
 
 export default function DashboardLayout() {
-  const { signOut, schoolId, user, role, isImpersonating } = useAuth()
+  const { signOut, schoolId, user, role, isInspecting, isImpersonating } = useAuth()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [emergencyPending, setEmergencyPending] = useState(false)
@@ -294,7 +294,7 @@ export default function DashboardLayout() {
   return (
     <div className={cn(
       "flex h-screen bg-gradient-to-br from-background via-muted to-background text-foreground",
-      isImpersonating && "pt-10"
+      (isInspecting || isImpersonating) && "pt-10"
     )}>
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">

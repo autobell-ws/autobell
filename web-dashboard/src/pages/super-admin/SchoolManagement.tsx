@@ -24,7 +24,7 @@ type School = {
 
 export default function SchoolManagement() {
   const queryClient = useQueryClient()
-  const { impersonateSchool } = useAuth()
+  const { startSchoolInspection } = useAuth()
   const navigate = useNavigate()
   
   // Form State
@@ -519,11 +519,11 @@ export default function SchoolManagement() {
                     
                     <button
                       onClick={() => {
-                        impersonateSchool(school.id)
+                        startSchoolInspection(school.id)
                         navigate('/dashboard')
                       }}
                       className="p-2 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all"
-                      title="Impersonate School Admin"
+                      title="Inspect School Dashboard"
                     >
                       <LogIn className="h-5 w-5" />
                     </button>
