@@ -11,6 +11,7 @@ export type DeviceOption = {
   location_city?: string | null
   profile_id?: string | null
   profile_name?: string | null
+  stream_volume?: number | null
 }
 
 const ONLINE_TIMEOUT_MS = 15 * 60 * 1000

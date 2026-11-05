@@ -188,7 +188,7 @@ export default function Broadcast() {
       if (!schoolId) return []
       const { data, error } = await supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, bell_profiles(name)')
+        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, bell_profiles(name)')
         .eq('school_id', schoolId)
         .order('name')
 
@@ -202,7 +202,8 @@ export default function Broadcast() {
         location_area: d.location_area,
         location_city: d.location_city,
         profile_id: d.profile_id,
-        profile_name: d.bell_profiles?.name || 'School Active Profile'
+        profile_name: d.bell_profiles?.name || 'School Active Profile',
+        stream_volume: d.stream_volume ?? 15
       }))
     },
     enabled: !!schoolId
@@ -214,6 +215,16 @@ export default function Broadcast() {
       setSelectedDeviceIds(devices.map(d => d.id))
     }
   }, [devices])
+
+  // Sync stream volume from selected device
+  useEffect(() => {
+    if (devices.length > 0 && selectedDeviceIds.length > 0) {
+      const targetDev = devices.find(d => selectedDeviceIds.includes(d.id) && d.stream_volume !== undefined && d.stream_volume !== null)
+      if (targetDev && targetDev.stream_volume !== undefined && targetDev.stream_volume !== null) {
+        setStreamVolume(targetDev.stream_volume)
+      }
+    }
+  }, [devices, selectedDeviceIds])
 
   // TTS State
   const [ttsProvider, setTtsProvider] = useState<TtsProvider>('google-free')
@@ -371,6 +382,13 @@ export default function Broadcast() {
   const [streamBypassOtherAudio, setStreamBypassOtherAudio] = useState(() => localStorage.getItem('broadcast_stream_bypass_other_audio') === 'true')
   const [streamIsActive, setStreamIsActive] = useState(false)
 
+  // AutoBell Stream & Volume State
+  const [streamVolume, setStreamVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('broadcast_stream_volume')
+    return saved ? parseInt(saved, 10) : 15
+  })
+  const volumeDebounceRef = useRef<NodeJS.Timeout | null>(null)
+
   // Archive.org MP3 Sequencer State
   const [isAddArchiveModalOpen, setIsAddArchiveModalOpen] = useState(false)
   const [editingArchiveItem, setEditingArchiveItem] = useState<ArchiveStreamItem | null>(null)
@@ -444,6 +462,40 @@ export default function Broadcast() {
       }
     }
   }, [])
+
+  const sendStreamVolumeCommand = async (newVol: number) => {
+    if (selectedDeviceIds.length === 0) return
+    try {
+      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
+      if (targetDevices.length === 0) return
+
+      // Update database persistence
+      await supabase
+        .from('bell_devices')
+        .update({ stream_volume: newVol })
+        .in('id', selectedDeviceIds)
+
+      // Insert command into queue for immediate sync
+      const commands = targetDevices.map(d => ({
+        device_id: d.id,
+        command: 'SET_STREAM_VOLUME',
+        payload: { volume: newVol },
+        status: 'pending'
+      }))
+      await supabase.from('command_queue').insert(commands)
+    } catch (err) {
+      console.error('Failed to set stream volume:', err)
+    }
+  }
+
+  const handleVolumeChange = (newVol: number) => {
+    setStreamVolume(newVol)
+    localStorage.setItem('broadcast_stream_volume', String(newVol))
+    if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
+    volumeDebounceRef.current = setTimeout(() => {
+      sendStreamVolumeCommand(newVol)
+    }, 300)
+  }
 
   // Helper to normalize archive.org web URLs to direct stream/download URLs
   const cleanArchiveOrgUrl = (inputUrl: string): string => {
@@ -781,6 +833,7 @@ export default function Broadcast() {
         command: 'STREAM_START',
         payload: {
           url: proxyUrl,
+          stream_volume: streamVolume,
           bypass_other_audio: streamBypassOtherAudio,
           play_pre_announcement: playPreAnnouncementStream,
           pre_announcement_url: schoolPreAnnouncementUrl || '',
@@ -1290,6 +1343,7 @@ export default function Broadcast() {
         command: 'STREAM_START',
         payload: {
           url: proxyUrl,
+          stream_volume: streamVolume,
           bypass_other_audio: streamBypassOtherAudio,
           play_pre_announcement: playPreAnnouncementStream,
           pre_announcement_url: schoolPreAnnouncementUrl || '',
@@ -2392,6 +2446,68 @@ export default function Broadcast() {
                       })}
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Independent Streaming Volume Section */}
+              <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                      <Volume2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <label htmlFor="stream-volume-slider" className="text-sm font-semibold text-foreground">
+                        Streaming Volume
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Independent volume for online streaming (does NOT change master bell volume)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-primary font-mono">
+                      Level {streamVolume} / 21
+                    </span>
+                    <span className="text-xs text-muted-foreground ml-1.5">
+                      ({Math.round((streamVolume / 21) * 100)}%)
+                    </span>
+                  </div>
+                </div>
+
+                <input
+                  id="stream-volume-slider"
+                  type="range"
+                  min="0"
+                  max="21"
+                  step="1"
+                  value={streamVolume}
+                  onChange={(e) => handleVolumeChange(parseInt(e.target.value, 10))}
+                  className="w-full accent-primary h-2 bg-secondary rounded-lg cursor-pointer"
+                />
+
+                {/* Preset Volume Buttons */}
+                <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                  {[
+                    { label: 'Mute (0)', val: 0 },
+                    { label: 'Low (7)', val: 7 },
+                    { label: 'Med (14)', val: 14 },
+                    { label: 'High (18)', val: 18 },
+                    { label: 'Max (21)', val: 21 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => handleVolumeChange(preset.val)}
+                      className={`text-xs px-2.5 py-1 rounded-md border transition-all ${
+                        streamVolume === preset.val
+                          ? 'bg-primary text-primary-foreground border-primary font-semibold'
+                          : 'bg-background hover:bg-muted border-input text-foreground'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 

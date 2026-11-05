@@ -135,6 +135,7 @@ unsigned long buzzerDurationMs = 3000;
 
 Audio *audio = NULL; // I2S Audio Object (Dynamic for RAM optimization)
 int systemVolume = 30;
+int streamVolume = 15;
 bool quietHoursEnabled = false;
 int quietHoursDisableFromMins = 21 * 60;
 int quietHoursEnableAtMins = 7 * 60;
@@ -478,6 +479,7 @@ void setup() {
   storedName.toCharArray(deviceName, 40);
   storedSchool.toCharArray(schoolId, 40);
   systemVolume = preferences.getInt("volume", 21);
+  streamVolume = preferences.getInt("stream_vol", 15);
   if (storedSchool.length() > 0 || storedIsActive) {
     currentState = STATE_ACTIVE;
   }
@@ -1591,7 +1593,7 @@ void startStreamPlayback(const String &url) {
   lcdPlayingType = "Streaming";
   lcdPlayingDetail = trimmedUrl;
   audio->connecttohost(trimmedUrl.c_str());
-  audio->setVolume(getI2SVolumeFromSystem(systemVolume));
+  audio->setVolume(getI2SVolumeFromSystem(streamVolume));
   isLocalPlayback = false;
   audioHasStarted = false;
   playState = PLAY_STREAMING;
@@ -2955,6 +2957,14 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
       if (payload.containsKey("pre_announcement_delay_seconds")) {
         preAnnouncementDelaySeconds = payload["pre_announcement_delay_seconds"].as<int>();
       }
+      if (payload.containsKey("stream_volume")) {
+        int sv = payload["stream_volume"].as<int>();
+        if (sv >= 0 && sv <= 21) {
+          streamVolume = sv;
+          preferences.putInt("stream_vol", streamVolume);
+          Serial.printf("[Stream] Volume set from STREAM_START payload: %d\n", streamVolume);
+        }
+      }
     }
 
     url.trim();
@@ -3252,6 +3262,21 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
         executed = true;
       } else {
         Serial.println("Invalid volume range (0-100)");
+      }
+    }
+  } else if (strcmp(cmd, "SET_STREAM_VOLUME") == 0) {
+    Serial.println("Executing command: SET_STREAM_VOLUME");
+    if (cmdId.length() > 0) ackCommand(cmdId);
+    if (!payload.isNull() && payload.containsKey("volume")) {
+      int sv = payload["volume"].as<int>();
+      if (sv >= 0 && sv <= 21) {
+        streamVolume = sv;
+        preferences.putInt("stream_vol", streamVolume);
+        if (audio && streamModeActive) {
+          audio->setVolume(getI2SVolumeFromSystem(streamVolume));
+        }
+        Serial.printf("[Command] Independent stream volume set to %d (Saved to NVS)\n", streamVolume);
+        executed = true;
       }
     }
   } else if (strcmp(cmd, "REBOOT") == 0) {
