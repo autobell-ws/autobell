@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react'
-import { Plus, Edit2, Save, Loader2, Calendar, Bell, Megaphone, Zap, AlertTriangle, Copy } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Plus, Edit2, Save, Loader2, Calendar, Bell, Megaphone, Zap, AlertTriangle, Copy, Trash2, X } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { formatTimeForDatabase, formatTimeForDisplay, parseAmPmParts } from '@/lib/timeFormat'
 import { TimeSlotRow } from '@/components/profile/TimeSlotRow'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { BellProfile, ScheduleItem, AudioFileItem, BellTimeRow } from '@/types/profile'
 
 type ClashInfo = {
@@ -109,9 +110,13 @@ export default function PeriodBellsAndAnnouncements() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
   const [activeBoardType, setActiveBoardType] = useState<'ESP32-S3 N16R8' | 'ESP32-C3 Mini'>('ESP32-S3 N16R8')
 
-  // Modals
+  // Modals & Profile Actions
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createProfileName, setCreateProfileName] = useState('')
+  const [profileToRename, setProfileToRename] = useState<BellProfile | null>(null)
+  const [renameInputValue, setRenameInputValue] = useState('')
+  const [profileToDelete, setProfileToDelete] = useState<BellProfile | null>(null)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
 
   // Fetch School Devices to detect S3/Mini presence
   const { data: schoolDevices = [] } = useQuery({
@@ -157,6 +162,66 @@ export default function PeriodBellsAndAnnouncements() {
     }
   })
   const activeProfileId = selectedProfileId ?? profiles[0]?.id ?? null
+  const activeProfile = profiles.find(p => p.id === activeProfileId) || null
+
+  const renameProfileMutation = useMutation({
+    mutationFn: async ({ id, newName }: { id: string; newName: string }) => {
+      const { error } = await supabase
+        .from('bell_profiles')
+        .update({ name: newName.trim() })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: ['schedule', activeProfileId] })
+      setProfileToRename(null)
+      setNotification({ type: 'success', message: 'Schedule profile renamed successfully!' })
+      setTimeout(() => setNotification(null), 3000)
+    },
+    onError: (err: any) => {
+      setNotification({ type: 'error', message: err?.message || 'Failed to rename schedule profile.' })
+      setTimeout(() => setNotification(null), 3000)
+    }
+  })
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: async (profile: BellProfile) => {
+      // 1. Delete associated bell_times
+      const { error: timesError } = await supabase
+        .from('bell_times')
+        .delete()
+        .eq('profile_id', profile.id)
+      if (timesError) throw timesError
+
+      // 2. Unlink any device pointing to this profile
+      await supabase
+        .from('bell_devices')
+        .update({ profile_id: null })
+        .eq('profile_id', profile.id)
+
+      // 3. Delete the profile itself
+      const { error: profileError } = await supabase
+        .from('bell_profiles')
+        .delete()
+        .eq('id', profile.id)
+      if (profileError) throw profileError
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      if (activeProfileId === variables.id) {
+        const remaining = profiles.filter(p => p.id !== variables.id)
+        setSelectedProfileId(remaining.length > 0 ? remaining[0].id : null)
+      }
+      setProfileToDelete(null)
+      setNotification({ type: 'success', message: 'Schedule profile deleted successfully!' })
+      setTimeout(() => setNotification(null), 3000)
+    },
+    onError: (err: any) => {
+      setNotification({ type: 'error', message: err?.message || 'Failed to delete schedule profile.' })
+      setTimeout(() => setNotification(null), 3000)
+    }
+  })
 
   // Fetch Audio Files
   const { data: audioFiles = [] } = useQuery<AudioFileItem[]>({
@@ -288,6 +353,19 @@ export default function PeriodBellsAndAnnouncements() {
         </div>
       </div>
 
+      {notification && (
+        <div className={`p-4 rounded-xl text-sm border shadow-sm flex items-center justify-between ${
+          notification.type === 'success'
+            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+            : 'bg-destructive/10 text-destructive dark:text-red-400 border-destructive/20'
+        }`}>
+          <span>{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="p-1 hover:opacity-70 cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex h-full flex-col gap-6 md:flex-row">
         {/* Sidebar */}
         <div className="w-full rounded-xl border border-border bg-card text-foreground shadow-sm md:w-64 shrink-0 overflow-hidden">
@@ -301,7 +379,7 @@ export default function PeriodBellsAndAnnouncements() {
                     : 'text-muted-foreground hover:bg-muted'
                 }`}
               >
-                AutoBell Standard
+                AutoBell S3
               </button>
               <button
                 onClick={() => handleBoardTypeChange('ESP32-C3 Mini')}
@@ -311,7 +389,7 @@ export default function PeriodBellsAndAnnouncements() {
                     : 'text-muted-foreground hover:bg-muted'
                 }`}
               >
-                AutoBell Compact
+                AutoBell Mini
               </button>
             </div>
           )}
@@ -322,8 +400,8 @@ export default function PeriodBellsAndAnnouncements() {
                 setCreateProfileName('')
                 setIsCreateModalOpen(true)
               }}
-              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-              title="Create Profile"
+              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              title="Create Schedule Profile"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -331,18 +409,58 @@ export default function PeriodBellsAndAnnouncements() {
           <div className="p-2 space-y-1">
             {loadingProfiles ? (
               <div className="p-4 text-xs text-muted-foreground">Loading schedules...</div>
+            ) : profiles.length === 0 ? (
+              <div className="p-4 text-xs text-muted-foreground text-center">No schedule profiles found. Click + to create one.</div>
             ) : profiles.map(profile => (
               <div
                 key={profile.id}
-                className={`group flex cursor-pointer items-center justify-between rounded-lg p-3 text-xs transition-colors ${
+                className={`group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${
                   activeProfileId === profile.id
                     ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
                     : 'text-foreground hover:bg-muted'
                 }`}
                 onClick={() => setSelectedProfileId(profile.id)}
               >
-                <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                  <span className="truncate">{profile.name}</span>
+                <div className="flex items-center gap-2 overflow-hidden min-w-0 pr-1">
+                  <span className="truncate" title={profile.name}>{profile.name}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProfileToRename(profile)
+                      setRenameInputValue(profile.name)
+                    }}
+                    className={`p-1 rounded transition-colors ${
+                      activeProfileId === profile.id
+                        ? 'text-primary-foreground hover:bg-black/20'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10'
+                    }`}
+                    title="Rename Schedule"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (profiles.length <= 1) {
+                        setNotification({ type: 'error', message: 'Cannot delete the only schedule profile.' })
+                        setTimeout(() => setNotification(null), 3000)
+                        return
+                      }
+                      setProfileToDelete(profile)
+                    }}
+                    className={`p-1 rounded transition-colors ${
+                      activeProfileId === profile.id
+                        ? 'text-primary-foreground hover:bg-red-500/40'
+                        : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+                    }`}
+                    title="Delete Schedule"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -365,6 +483,18 @@ export default function PeriodBellsAndAnnouncements() {
             schoolId={schoolId}
             defaultTtsLanguage={schoolSettings?.default_tts_language || 'en'}
             boardType={activeBoardType}
+            onRenameCurrentProfile={activeProfile ? () => {
+              setProfileToRename(activeProfile)
+              setRenameInputValue(activeProfile.name)
+            } : undefined}
+            onDeleteCurrentProfile={activeProfile ? () => {
+              if (profiles.length <= 1) {
+                setNotification({ type: 'error', message: 'Cannot delete the only schedule profile.' })
+                setTimeout(() => setNotification(null), 3000)
+                return
+              }
+              setProfileToDelete(activeProfile)
+            } : undefined}
           />
         ) : (
           <div className="flex-1 min-w-0 rounded-xl border border-border bg-card text-muted-foreground shadow-sm p-8 text-center text-sm">
@@ -417,6 +547,69 @@ export default function PeriodBellsAndAnnouncements() {
           </div>
         </div>
       )}
+
+      {/* Rename Profile Modal */}
+      {profileToRename && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-xl bg-card text-foreground p-6 shadow-2xl border border-border">
+            <h3 className="mb-4 text-lg font-bold text-foreground">Rename Schedule Profile</h3>
+            <input
+              type="text"
+              value={renameInputValue}
+              onChange={(e) => setRenameInputValue(e.target.value)}
+              placeholder="Enter new schedule name"
+              className="w-full rounded-lg border border-input bg-background text-foreground p-2.5 mb-4 text-sm"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameInputValue.trim() && renameInputValue.trim() !== profileToRename.name) {
+                  renameProfileMutation.mutate({ id: profileToRename.id, newName: renameInputValue.trim() })
+                }
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setProfileToRename(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted cursor-pointer"
+                disabled={renameProfileMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (renameInputValue.trim() && renameInputValue.trim() !== profileToRename.name) {
+                    renameProfileMutation.mutate({ id: profileToRename.id, newName: renameInputValue.trim() })
+                  }
+                }}
+                disabled={!renameInputValue.trim() || renameInputValue.trim() === profileToRename.name || renameProfileMutation.isPending}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+              >
+                {renameProfileMutation.isPending ? 'Saving...' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(profileToDelete)}
+        title="Delete Schedule Profile"
+        description={`Are you sure you want to delete the schedule profile "${profileToDelete?.name}"? All bell and announcement timings associated with this profile will be permanently deleted.`}
+        confirmText="Delete Schedule"
+        cancelText="Cancel"
+        variant="destructive"
+        isLoading={deleteProfileMutation.isPending}
+        onConfirm={() => {
+          if (profileToDelete) {
+            deleteProfileMutation.mutate(profileToDelete)
+          }
+        }}
+        onClose={() => {
+          if (!deleteProfileMutation.isPending) {
+            setProfileToDelete(null)
+          }
+        }}
+      />
     </div>
   )
 }
@@ -433,7 +626,9 @@ function PeriodBellsEditorBody({
   queryClient,
   schoolId,
   defaultTtsLanguage,
-  boardType
+  boardType,
+  onRenameCurrentProfile,
+  onDeleteCurrentProfile
 }: {
   selectedProfileId: string
   initialProfileName: string
@@ -447,6 +642,8 @@ function PeriodBellsEditorBody({
   schoolId: string | null
   defaultTtsLanguage?: 'en' | 'ur' | 'ar'
   boardType: 'ESP32-S3 N16R8' | 'ESP32-C3 Mini'
+  onRenameCurrentProfile?: () => void
+  onDeleteCurrentProfile?: () => void
 }) {
   const [localSchedule, setLocalSchedule] = useState<ScheduleItem[]>(initialSchedule)
   const [localProfileName, setLocalProfileName] = useState(initialProfileName)
@@ -454,6 +651,10 @@ function PeriodBellsEditorBody({
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false)
   const [renameInput, setRenameInput] = useState('')
+
+  useEffect(() => {
+    setLocalProfileName(initialProfileName)
+  }, [initialProfileName])
 
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false)
   const [selectedTargetDays, setSelectedTargetDays] = useState<number[]>([])
@@ -661,16 +862,39 @@ function PeriodBellsEditorBody({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-            {localProfileName}
-            <button
-              onClick={() => {
-                setRenameInput(localProfileName)
-                setIsRenameModalOpen(true)
-              }}
-              className="text-muted-foreground hover:text-foreground p-1"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
+            <span>{localProfileName}</span>
+            {onRenameCurrentProfile ? (
+              <button
+                type="button"
+                onClick={onRenameCurrentProfile}
+                className="text-muted-foreground hover:text-foreground p-1 transition-colors rounded hover:bg-muted cursor-pointer"
+                title="Rename Schedule"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setRenameInput(localProfileName)
+                  setIsRenameModalOpen(true)
+                }}
+                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+                title="Rename Schedule"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+            )}
+            {onDeleteCurrentProfile && (
+              <button
+                type="button"
+                onClick={onDeleteCurrentProfile}
+                className="text-muted-foreground hover:text-destructive p-1 transition-colors rounded hover:bg-destructive/10 cursor-pointer"
+                title="Delete Schedule"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </h2>
           <p className="text-xs text-muted-foreground">Editing combined timeline for {days[selectedDay]}</p>
         </div>
@@ -953,12 +1177,22 @@ function PeriodBellsEditorBody({
               <Plus className="h-4 w-4" /> Add Scheduled Relay Bell Trigger
             </button>
           ) : (
-            <button
-              onClick={() => handleAddItem('tts')}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-purple-500/30 p-4 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:border-purple-500 hover:bg-purple-500/5 transition-all cursor-pointer"
-            >
-              <Plus className="h-4 w-4" /> Add Scheduled Announcement (📢 TTS Voice)
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleAddItem('mp3')}
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-500/30 p-4 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:border-blue-500 hover:bg-blue-500/5 transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4" /> Add Period Bell (🔔 Audio Track)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddItem('tts')}
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-purple-500/30 p-4 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:border-purple-500 hover:bg-purple-500/5 transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4" /> Add Scheduled Announcement (📢 TTS Voice)
+              </button>
+            </div>
           )}
         </div>
       </div>
