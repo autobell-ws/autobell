@@ -1,20 +1,28 @@
-**/.git/**
-**/.venv/**
-**/.vercel/**
-**/node_modules/**
-**/dist/**
-mobile-app/**
-esp32-firmware/**
-Bell Sound Library/**
-docs/**
-piper-tts/**
-piper-tts-service/**
-firmware/**
-factory_batches/**
-supabase/**
-scratch/**
-scripts/**
-tests/**
+**/.git
+**/.venv
+**/node_modules
+mobile-app
+esp32-firmware
+test_env
+Bells Sounds
+Bell Sound Library
+docs
+piper-tts
+piper-tts-service
+firmware
+factory_batches
+supabase
+scratch
+scripts
+tests
 *.tar.gz
 *.onnx
 *.tar
+*.apk
+*.zip
+*.log
+*.sql
+*.pptx
+*.docx
+*.png
+*.jpg

@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useQuery } from '@tanstack/react-query'
 import { generateTTS, generateCambAITTS, generateElevenLabsTTS, generateGoogleFreeTTS } from '@/lib/tts'
 import { translateText } from '@/lib/translate'
-import { Mic, Square, Play, Send, Type, Radio, CloudSun, Newspaper, RefreshCw, Languages } from 'lucide-react'
+import { Mic, Square, Play, Send, Type, Radio, CloudSun, Newspaper, RefreshCw, Languages, Plus, Edit2, Pause, ExternalLink, AlertCircle, Sparkles, Globe, ListOrdered, X, ArrowUp, ArrowDown, Clock, Calendar, Check, Volume2, Trash2, Loader2 } from 'lucide-react'
 import { DeviceSelector, type DeviceOption } from '@/components/DeviceSelector'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 // @ts-expect-error mic-recorder-to-mp3 has no types
 import MicRecorder from 'mic-recorder-to-mp3'
 
@@ -15,6 +16,21 @@ type Mp3Recorder = {
   stop: () => {
     getMp3: () => Promise<[unknown, Blob]>
   }
+}
+
+export type ArchiveStreamItem = {
+  id: string
+  school_id?: string
+  title: string
+  url: string
+  start_time: string
+  duration_minutes: number
+  duration_seconds: number
+  days_of_week: number[]
+  position: number
+  is_enabled: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 type TtsProvider = 'openai' | 'cambai' | 'elevenlabs' | 'google-free' | 'topmediai'
@@ -353,6 +369,404 @@ export default function Broadcast() {
   const [streamUrl, setStreamUrl] = useState(() => localStorage.getItem('broadcast_stream_url') || '')
   const [streamBypassOtherAudio, setStreamBypassOtherAudio] = useState(() => localStorage.getItem('broadcast_stream_bypass_other_audio') === 'true')
   const [streamIsActive, setStreamIsActive] = useState(false)
+
+  // Archive.org MP3 Sequencer State
+  const [isAddArchiveModalOpen, setIsAddArchiveModalOpen] = useState(false)
+  const [editingArchiveItem, setEditingArchiveItem] = useState<ArchiveStreamItem | null>(null)
+  const [archiveItemToDelete, setArchiveItemToDelete] = useState<ArchiveStreamItem | null>(null)
+  const [isSavingArchiveItem, setIsSavingArchiveItem] = useState(false)
+
+  // Form state
+  const [archiveTitle, setArchiveTitle] = useState('')
+  const [archiveUrl, setArchiveUrl] = useState('')
+  const [archiveStartTime, setArchiveStartTime] = useState('08:00')
+  const [archiveDurationMinutes, setArchiveDurationMinutes] = useState(10)
+  const [archiveDurationSeconds, setArchiveDurationSeconds] = useState(0)
+  const [archiveDays, setArchiveDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6])
+  const [archiveIsEnabled, setArchiveIsEnabled] = useState(true)
+
+  // Audition state (browser audio preview)
+  const [auditioningId, setAuditioningId] = useState<string | null>(null)
+  const auditionAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Speaker Streaming state for individual archive item
+  const [streamingArchiveId, setStreamingArchiveId] = useState<string | null>(null)
+
+  // Fetch Archive.org Stream Items (Supabase + localStorage cache)
+  const { data: archiveItems = [], isLoading: loadingArchiveItems, refetch: refetchArchiveItems } = useQuery<ArchiveStreamItem[]>({
+    queryKey: ['archive_stream_items', schoolId],
+    queryFn: async () => {
+      const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+      try {
+        const { data, error } = await supabase
+          .from('archive_stream_items')
+          .select('*')
+          .eq('school_id', activeSchoolId)
+          .order('position', { ascending: true })
+
+        if (!error && data) {
+          localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(data))
+          return data as ArchiveStreamItem[]
+        }
+      } catch (err) {
+        console.warn('Failed to query supabase archive_stream_items, checking local storage:', err)
+      }
+
+      const cached = localStorage.getItem(`autobell_archive_stream_${activeSchoolId}`)
+      if (cached) {
+        try {
+          return JSON.parse(cached) as ArchiveStreamItem[]
+        } catch (e) {
+          console.error('Failed to parse cached archive stream items', e)
+        }
+      }
+      return []
+    },
+    refetchInterval: 10000
+  })
+
+  // Cleanup audition audio on unmount
+  useEffect(() => {
+    return () => {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause()
+        auditionAudioRef.current = null
+      }
+    }
+  }, [])
+
+  // Helper to normalize archive.org web URLs to direct stream/download URLs
+  const cleanArchiveOrgUrl = (inputUrl: string): string => {
+    let url = inputUrl.trim()
+    if (!url) return ''
+
+    if (url.startsWith('archive.org/')) {
+      url = 'https://' + url
+    } else if (url.startsWith('www.archive.org/')) {
+      url = 'https://' + url
+    }
+
+    if (url.includes('archive.org/details/')) {
+      url = url.replace('archive.org/details/', 'archive.org/download/')
+    }
+
+    return url
+  }
+
+  const openAddArchiveModal = () => {
+    setEditingArchiveItem(null)
+    setArchiveTitle('')
+    setArchiveUrl('')
+    if (archiveItems.length > 0) {
+      const lastItem = archiveItems[archiveItems.length - 1]
+      const [h, m] = (lastItem.start_time || '08:00').split(':').map(Number)
+      const validH = isNaN(h) ? 8 : h
+      const validM = isNaN(m) ? 0 : m
+      const addM = (lastItem.duration_minutes || 0) + Math.ceil((lastItem.duration_seconds || 0) / 60) || 10
+      const totalM = (validH * 60 + validM + addM) % 1440
+      const nextH = Math.floor(totalM / 60)
+      const nextM = totalM % 60
+      setArchiveStartTime(`${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`)
+    } else {
+      setArchiveStartTime('08:00')
+    }
+    setArchiveDurationMinutes(10)
+    setArchiveDurationSeconds(0)
+    setArchiveDays([0, 1, 2, 3, 4, 5, 6])
+    setArchiveIsEnabled(true)
+    setIsAddArchiveModalOpen(true)
+  }
+
+  const openEditArchiveModal = (item: ArchiveStreamItem) => {
+    setEditingArchiveItem(item)
+    setArchiveTitle(item.title)
+    setArchiveUrl(item.url)
+    setArchiveStartTime(item.start_time || '08:00')
+    setArchiveDurationMinutes(item.duration_minutes || 0)
+    setArchiveDurationSeconds(item.duration_seconds || 0)
+    setArchiveDays(item.days_of_week && item.days_of_week.length > 0 ? item.days_of_week : [0, 1, 2, 3, 4, 5, 6])
+    setArchiveIsEnabled(item.is_enabled ?? true)
+    setIsAddArchiveModalOpen(true)
+  }
+
+  const handleSaveArchiveItem = async () => {
+    const cleanedUrl = cleanArchiveOrgUrl(archiveUrl)
+    if (!archiveTitle.trim()) {
+      setStatus({ type: 'error', message: 'Please provide a title for the stream item.' })
+      return
+    }
+    if (!cleanedUrl) {
+      setStatus({ type: 'error', message: 'Please enter a valid Archive.org or MP3 audio URL.' })
+      return
+    }
+
+    setIsSavingArchiveItem(true)
+    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+
+    try {
+      const isEditing = !!editingArchiveItem
+      const nextPos = isEditing ? editingArchiveItem.position : (archiveItems.length > 0 ? Math.max(...archiveItems.map(i => i.position)) + 1 : 1)
+
+      const payload = {
+        id: isEditing ? editingArchiveItem.id : crypto.randomUUID(),
+        school_id: activeSchoolId,
+        title: archiveTitle.trim(),
+        url: cleanedUrl,
+        start_time: archiveStartTime || '08:00',
+        duration_minutes: Number(archiveDurationMinutes) || 0,
+        duration_seconds: Number(archiveDurationSeconds) || 0,
+        days_of_week: archiveDays,
+        position: nextPos,
+        is_enabled: archiveIsEnabled,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('archive_stream_items')
+        .upsert(payload)
+
+      if (error) {
+        console.warn('Supabase upsert failed, saving to local cache:', error)
+      }
+
+      let updatedList: ArchiveStreamItem[]
+      if (isEditing) {
+        updatedList = archiveItems.map(i => i.id === payload.id ? (payload as ArchiveStreamItem) : i)
+      } else {
+        updatedList = [...archiveItems, payload as ArchiveStreamItem]
+      }
+      updatedList.sort((a, b) => a.position - b.position)
+      localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(updatedList))
+
+      await refetchArchiveItems()
+      setIsAddArchiveModalOpen(false)
+      setStatus({
+        type: 'success',
+        message: isEditing ? `Updated "${archiveTitle}" stream item.` : `Added "${archiveTitle}" to Archive.org sequencer.`
+      })
+    } catch (err) {
+      console.error('Failed to save archive item:', err)
+      setStatus({ type: 'error', message: 'Failed to save stream item.' })
+    } finally {
+      setIsSavingArchiveItem(false)
+    }
+  }
+
+  const handleMoveArchiveItem = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= archiveItems.length) return
+
+    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+    const newItems = [...archiveItems]
+    const temp = newItems[index]
+    newItems[index] = newItems[targetIndex]
+    newItems[targetIndex] = temp
+
+    const resequenced = newItems.map((item, idx) => ({
+      ...item,
+      position: idx + 1
+    }))
+
+    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(resequenced))
+
+    try {
+      const upserts = resequenced.map(item => ({
+        id: item.id,
+        school_id: activeSchoolId,
+        title: item.title,
+        url: item.url,
+        start_time: item.start_time,
+        duration_minutes: item.duration_minutes,
+        duration_seconds: item.duration_seconds,
+        days_of_week: item.days_of_week,
+        position: item.position,
+        is_enabled: item.is_enabled,
+        updated_at: new Date().toISOString()
+      }))
+
+      await supabase.from('archive_stream_items').upsert(upserts)
+    } catch (err) {
+      console.warn('Failed to update positions in Supabase:', err)
+    }
+
+    await refetchArchiveItems()
+  }
+
+  const handleToggleArchiveEnabled = async (item: ArchiveStreamItem) => {
+    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+    const updated = { ...item, is_enabled: !item.is_enabled, updated_at: new Date().toISOString() }
+
+    try {
+      await supabase.from('archive_stream_items').upsert(updated)
+    } catch (err) {
+      console.warn('Failed to update toggle in Supabase:', err)
+    }
+
+    const updatedList = archiveItems.map(i => i.id === item.id ? updated : i)
+    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(updatedList))
+    await refetchArchiveItems()
+  }
+
+  const handleDeleteArchiveItem = async () => {
+    if (!archiveItemToDelete) return
+    const item = archiveItemToDelete
+    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+
+    try {
+      await supabase.from('archive_stream_items').delete().eq('id', item.id)
+    } catch (err) {
+      console.warn('Failed to delete from Supabase:', err)
+    }
+
+    const remaining = archiveItems.filter(i => i.id !== item.id)
+    const resequenced = remaining.map((it, idx) => ({
+      ...it,
+      position: idx + 1
+    }))
+    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(resequenced))
+
+    try {
+      if (resequenced.length > 0) {
+        await supabase.from('archive_stream_items').upsert(resequenced)
+      }
+    } catch (err) {
+      console.warn('Failed to resequence after delete in Supabase:', err)
+    }
+
+    setArchiveItemToDelete(null)
+    await refetchArchiveItems()
+    setStatus({ type: 'success', message: `Removed "${item.title}" from stream program.` })
+  }
+
+  const handleAutoChainTimings = async () => {
+    if (archiveItems.length < 2) {
+      setStatus({ type: 'error', message: 'At least 2 items are needed to auto-chain timings.' })
+      return
+    }
+
+    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
+    const chained: ArchiveStreamItem[] = []
+    let currentStartTime = archiveItems[0].start_time || '08:00'
+
+    for (let i = 0; i < archiveItems.length; i++) {
+      const item = archiveItems[i]
+      chained.push({ ...item, start_time: currentStartTime })
+
+      const [hStr, mStr] = currentStartTime.split(':')
+      const h = parseInt(hStr, 10) || 0
+      const m = parseInt(mStr, 10) || 0
+      const addMinutes = (item.duration_minutes || 0) + Math.ceil((item.duration_seconds || 0) / 60) || 5
+      const totalMinutes = (h * 60 + m + addMinutes) % 1440
+      const nextH = Math.floor(totalMinutes / 60)
+      const nextM = totalMinutes % 60
+      currentStartTime = `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`
+    }
+
+    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(chained))
+
+    try {
+      await supabase.from('archive_stream_items').upsert(chained)
+    } catch (err) {
+      console.warn('Failed to upsert chained timings:', err)
+    }
+
+    await refetchArchiveItems()
+    setStatus({
+      type: 'success',
+      message: `Auto-chained sequential timings for ${chained.length} stream tracks!`
+    })
+  }
+
+  const handleToggleAudition = (item: ArchiveStreamItem) => {
+    if (auditioningId === item.id) {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause()
+        auditionAudioRef.current.currentTime = 0
+      }
+      setAuditioningId(null)
+    } else {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause()
+      }
+      const audio = new Audio(item.url)
+      auditionAudioRef.current = audio
+      setAuditioningId(item.id)
+      audio.play().catch(err => {
+        console.error('Audio preview error:', err)
+        setStatus({ type: 'error', message: 'Unable to preview audio in browser. Check direct MP3 link.' })
+        setAuditioningId(null)
+      })
+      audio.onended = () => {
+        setAuditioningId(null)
+      }
+      audio.onerror = () => {
+        setStatus({ type: 'error', message: 'Failed to load audio preview. Verify the MP3 URL is accessible.' })
+        setAuditioningId(null)
+      }
+    }
+  }
+
+  const handleStreamArchiveItemToSpeakers = async (item: ArchiveStreamItem) => {
+    if (!schoolId) return
+    setStreamingArchiveId(item.id)
+    setIsSending(true)
+    setStatus(null)
+
+    try {
+      if (selectedDeviceIds.length === 0) {
+        throw new Error('Please select at least one target bell device.')
+      }
+
+      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
+      if (targetDevices.length === 0) {
+        throw new Error('No selected target devices found for stream.')
+      }
+
+      const cleanedUrl = cleanArchiveOrgUrl(item.url)
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zoqzgirtrhpxodrutjvs.supabase.co'
+      const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(cleanedUrl)}`
+
+      const commands = targetDevices.map(d => ({
+        device_id: d.id,
+        command: 'STREAM_START',
+        payload: {
+          url: proxyUrl,
+          bypass_other_audio: streamBypassOtherAudio,
+          play_pre_announcement: playPreAnnouncementStream,
+          pre_announcement_url: schoolPreAnnouncementUrl || '',
+          pre_announcement_delay_seconds: schoolPreAnnouncementDelay || 3
+        },
+        status: 'pending'
+      }))
+
+      const { error: cmdError } = await supabase
+        .from('command_queue')
+        .insert(commands)
+
+      if (cmdError) throw cmdError
+
+      setStreamIsActive(true)
+      setStatus({ type: 'success', message: `Streaming "${item.title}" to selected devices via Archive.org!` })
+    } catch (error) {
+      console.error('Start archive stream failed:', error)
+      if (error instanceof Error) {
+        setStatus({ type: 'error', message: error.message })
+      } else {
+        setStatus({ type: 'error', message: 'Failed to stream archive item' })
+      }
+    } finally {
+      setIsSending(false)
+      setStreamingArchiveId(null)
+    }
+  }
+
+  const toggleArchiveDay = (dayIndex: number) => {
+    setArchiveDays(prev =>
+      prev.includes(dayIndex)
+        ? prev.filter(d => d !== dayIndex)
+        : [...prev, dayIndex].sort((a, b) => a - b)
+    )
+  }
   
   // TopMediai State
   const [topMediaiKey, setTopMediaiKey] = useState('')
@@ -1660,72 +2074,588 @@ export default function Broadcast() {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground">Stream URL</label>
-                <input
-                  type="text"
-                  value={streamUrl}
-                  onChange={(e) => setStreamUrl(e.target.value)}
-                  placeholder="https://example.com/stream.mp3"
-                  className="mt-1 block w-full rounded-md border-input bg-background text-foreground shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2 border"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Paste a direct radio/audio stream URL. For Shoutcast server links like http://ip:port, use http://ip:port/;
-                </p>
+            <div className="space-y-5">
+              {/* Archive.org Scheduled MP3 Streams & Sequencer Section */}
+              <div className="p-5 rounded-xl border border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 space-y-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-bold text-foreground">
+                          Archive.org Scheduled MP3 Streams & Sequencer
+                        </h3>
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                          آن لائن تلاوت و بیانات
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Schedule and sequence direct Archive.org MP3 files with custom run times, duration, and order.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleAutoChainTimings}
+                      disabled={archiveItems.length < 2}
+                      title="Calculate each track's start time automatically based on the previous track's start time and duration"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent text-xs font-medium text-foreground disabled:opacity-40 transition-colors shadow-xs"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      Auto-Chain Timings
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openAddArchiveModal}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Archive.org MP3
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick guide banner */}
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/40 border border-border/80 text-xs text-muted-foreground">
+                  <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-medium text-foreground">
+                      Paste Archive.org links easily:
+                    </p>
+                    <p>
+                      You can paste web page links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/details/...</code>) or direct file links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/download/...</code>). The system automatically formats them for instant ESP32 speaker streaming.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tracks list */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <ListOrdered className="w-3.5 h-3.5 text-primary" />
+                      Playback Sequence ({archiveItems.length} Track{archiveItems.length === 1 ? '' : 's'})
+                    </label>
+                    {archiveItems.length > 0 && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Use ▲ / ▼ buttons to adjust sequence order
+                      </span>
+                    )}
+                  </div>
+
+                  {loadingArchiveItems ? (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground text-xs gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      Loading Archive.org playlist...
+                    </div>
+                  ) : archiveItems.length === 0 ? (
+                    <div className="p-8 text-center rounded-xl border border-dashed border-border bg-card/40 space-y-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center">
+                        <Globe className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">No Archive.org items added yet</p>
+                        <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1">
+                          Click "Add Archive.org MP3" above to add your first recitation, audio speech, or program track with custom timing and duration.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={openAddArchiveModal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Your First MP3 Track
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {archiveItems.map((item, idx) => {
+                        const isAuditioning = auditioningId === item.id
+                        const isStreaming = streamingArchiveId === item.id
+                        const durationText = `${item.duration_minutes || 0}m ${item.duration_seconds ? `${item.duration_seconds}s` : ''}`.trim()
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`p-3 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                              item.is_enabled
+                                ? 'bg-card/90 border-border hover:border-primary/40 shadow-xs'
+                                : 'bg-muted/20 border-border/60 opacity-60'
+                            }`}
+                          >
+                            {/* Left: Position badge + Title + Link */}
+                            <div className="flex items-start md:items-center gap-3 min-w-0 flex-1">
+                              <span className="w-7 h-7 rounded-lg bg-primary/15 text-primary font-bold text-xs flex items-center justify-center shrink-0 border border-primary/20">
+                                #{item.position || idx + 1}
+                              </span>
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-sm font-semibold text-foreground truncate" title={item.title}>
+                                    {item.title}
+                                  </h4>
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Open direct MP3 audio link"
+                                    className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5 truncate max-w-[220px]"
+                                  >
+                                    <ExternalLink className="w-3 h-3 shrink-0" />
+                                    <span className="truncate">{item.url.replace(/^https?:\/\//, '')}</span>
+                                  </a>
+                                </div>
+
+                                {/* Meta pills: Time, Duration, Days */}
+                                <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted font-mono font-medium text-foreground">
+                                    <Clock className="w-3 h-3 text-primary" />
+                                    {item.start_time || '08:00'}
+                                  </span>
+
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted font-mono">
+                                    ⏱️ {durationText || '10m'}
+                                  </span>
+
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted">
+                                    <Calendar className="w-3 h-3 text-muted-foreground" />
+                                    {item.days_of_week?.length === 7
+                                      ? 'Every Day'
+                                      : item.days_of_week?.length === 5 && !item.days_of_week.includes(0) && !item.days_of_week.includes(6)
+                                      ? 'Mon - Fri'
+                                      : `${item.days_of_week?.length || 0} days`}
+                                  </span>
+
+                                  {!item.is_enabled && (
+                                    <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
+                                      Disabled
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right: Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0 self-end md:self-center flex-wrap">
+                              {/* Reorder Buttons */}
+                              <div className="flex items-center bg-muted/40 rounded-lg p-0.5 border border-border">
+                                <button
+                                  type="button"
+                                  title="Move earlier in sequence"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveArchiveItem(idx, 'up')}
+                                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Move later in sequence"
+                                  disabled={idx === archiveItems.length - 1}
+                                  onClick={() => handleMoveArchiveItem(idx, 'down')}
+                                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Audition in Browser */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAudition(item)}
+                                title={isAuditioning ? 'Stop Browser Audition' : 'Preview audio in browser'}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                  isAuditioning
+                                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400 animate-pulse'
+                                    : 'bg-background hover:bg-accent border-input text-foreground'
+                                }`}
+                              >
+                                {isAuditioning ? (
+                                  <>
+                                    <Pause className="w-3 h-3" />
+                                    Auditioning...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Volume2 className="w-3 h-3" />
+                                    Audition
+                                  </>
+                                )}
+                              </button>
+
+                              {/* Play on Speakers */}
+                              <button
+                                type="button"
+                                onClick={() => handleStreamArchiveItemToSpeakers(item)}
+                                disabled={isSending || isStreaming}
+                                title="Broadcast this track right now to speakers"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs disabled:opacity-50 transition-all"
+                              >
+                                {isStreaming ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Play className="w-3 h-3" />
+                                )}
+                                Play on Speakers
+                              </button>
+
+                              {/* Enable/Disable Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleArchiveEnabled(item)}
+                                title={item.is_enabled ? 'Disable track' : 'Enable track'}
+                                className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all ${
+                                  item.is_enabled
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                    : 'bg-muted text-muted-foreground border-border'
+                                }`}
+                              >
+                                {item.is_enabled ? 'ACTIVE' : 'OFF'}
+                              </button>
+
+                              {/* Edit */}
+                              <button
+                                type="button"
+                                onClick={() => openEditArchiveModal(item)}
+                                title="Edit track details and timings"
+                                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                type="button"
+                                onClick={() => setArchiveItemToDelete(item)}
+                                title="Remove from list"
+                                className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  id="bypass-other-audio"
-                  type="checkbox"
-                  checked={streamBypassOtherAudio}
-                  onChange={(e) => {
-                    setStreamBypassOtherAudio(e.target.checked)
-                    localStorage.setItem('broadcast_stream_bypass_other_audio', String(e.target.checked))
-                  }}
-                  className="h-4 w-4"
-                />
-                <label htmlFor="bypass-other-audio" className="text-sm text-foreground">
-                  Bypass scheduled bells, TTS, and voice notes while streaming
-                </label>
-              </div>
+              {/* Direct External Audio Stream Section */}
+              <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                <div className="flex items-center gap-2 border-b border-border pb-2">
+                  <Radio className="w-4 h-4 text-primary" />
+                  <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                    Direct External Radio Stream URL (Optional)
+                  </h4>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground">Direct Stream URL</label>
+                  <input
+                    type="text"
+                    value={streamUrl}
+                    onChange={(e) => setStreamUrl(e.target.value)}
+                    placeholder="https://example.com/stream.mp3"
+                    className="mt-1 block w-full rounded-md border-input bg-background text-foreground shadow-sm focus:border-primary focus:ring-primary text-xs p-2 border"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Paste a direct radio/audio stream URL. For Shoutcast server links like http://ip:port, use http://ip:port/;
+                  </p>
+                </div>
 
-              <div className="flex items-center gap-2 mt-4 p-3 bg-muted/30 rounded-md border border-border">
-                <input
-                  id="stream-pre-announcement"
-                  type="checkbox"
-                  checked={playPreAnnouncementStream}
-                  onChange={(e) => setPlayPreAnnouncementStream(e.target.checked)}
-                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
-                />
-                <label htmlFor="stream-pre-announcement" className="text-sm font-medium text-foreground cursor-pointer">
-                  🔔 Play Pre-Announcement Sound before stream starts (Default 3s delay)
-                </label>
-              </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="bypass-other-audio"
+                    type="checkbox"
+                    checked={streamBypassOtherAudio}
+                    onChange={(e) => {
+                      setStreamBypassOtherAudio(e.target.checked)
+                      localStorage.setItem('broadcast_stream_bypass_other_audio', String(e.target.checked))
+                    }}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="bypass-other-audio" className="text-xs text-foreground">
+                    Bypass scheduled bells, TTS, and voice notes while streaming
+                  </label>
+                </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={startStream}
-                  disabled={!streamUrl || isSending}
-                  className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none disabled:opacity-50"
-                >
-                  <Play className="w-4 h-4 mr-2" />
-                  {isSending ? 'Starting...' : streamIsActive ? 'Restart Stream' : 'Play Stream'}
-                </button>
-                <button
-                  onClick={stopStream}
-                  disabled={isSending}
-                  className="inline-flex justify-center items-center px-4 py-2 border border-input text-sm font-medium rounded-md shadow-sm text-foreground bg-background hover:bg-accent hover:text-accent-foreground focus:outline-none disabled:opacity-50"
-                >
-                  <Square className="w-4 h-4 mr-2" />
-                  {isSending ? 'Stopping...' : 'Stop Stream'}
-                </button>
+                <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-md border border-border">
+                  <input
+                    id="stream-pre-announcement"
+                    type="checkbox"
+                    checked={playPreAnnouncementStream}
+                    onChange={(e) => setPlayPreAnnouncementStream(e.target.checked)}
+                    className="h-4 w-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <label htmlFor="stream-pre-announcement" className="text-xs font-medium text-foreground cursor-pointer">
+                    🔔 Play Pre-Announcement Sound before stream starts (Default 3s delay)
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button
+                    onClick={startStream}
+                    disabled={!streamUrl || isSending}
+                    className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-xs font-medium rounded-md shadow-sm text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none disabled:opacity-50"
+                  >
+                    <Play className="w-3.5 h-3.5 mr-1.5" />
+                    {isSending ? 'Starting...' : streamIsActive ? 'Restart Stream' : 'Play Direct Stream'}
+                  </button>
+                  <button
+                    onClick={stopStream}
+                    disabled={isSending}
+                    className="inline-flex justify-center items-center px-4 py-2 border border-input text-xs font-medium rounded-md shadow-sm text-foreground bg-background hover:bg-accent hover:text-accent-foreground focus:outline-none disabled:opacity-50"
+                  >
+                    <Square className="w-3.5 h-3.5 mr-1.5" />
+                    {isSending ? 'Stopping...' : 'Stop Stream'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Add / Edit Archive.org Item Modal */}
+      {isAddArchiveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in-0 duration-200">
+          <div className="w-full max-w-lg rounded-xl bg-card border border-border p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Globe className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    {editingArchiveItem ? 'Edit Archive.org Stream Item' : 'Add Archive.org MP3 Stream Item'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Configure audio title, direct stream URL, start time, and duration
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddArchiveModalOpen(false)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 pt-1">
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1 uppercase tracking-wider">
+                  Track / Program Title <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={archiveTitle}
+                  onChange={(e) => setArchiveTitle(e.target.value)}
+                  placeholder="e.g. Surah Rahman Tilawat, Assembly Speech, National Anthem"
+                  className="block w-full rounded-lg border border-input bg-background text-foreground text-sm p-2.5 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                />
+              </div>
+
+              {/* URL */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-foreground uppercase tracking-wider">
+                    Archive.org / MP3 Direct URL <span className="text-destructive">*</span>
+                  </label>
+                  {archiveUrl.includes('archive.org/details/') && (
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                      Auto-converting details → download
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={archiveUrl}
+                  onChange={(e) => setArchiveUrl(e.target.value)}
+                  placeholder="https://archive.org/download/item_id/file.mp3 or archive.org/details/..."
+                  className="block w-full rounded-lg border border-input bg-background text-foreground font-mono text-xs p-2.5 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Paste any Archive.org item link. Links containing <code className="text-primary font-mono">archive.org/details/</code> are automatically converted to direct download streams.
+                </p>
+              </div>
+
+              {/* Timing: Start Time & Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-lg bg-muted/20 border border-border">
+                {/* Start Time */}
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    Scheduled Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={archiveStartTime}
+                    onChange={(e) => setArchiveStartTime(e.target.value)}
+                    className="block w-full rounded-md border border-input bg-background text-foreground font-mono text-sm p-2 focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                    When this track is scheduled to start
+                  </span>
+                </div>
+
+                {/* Duration: Minutes & Seconds */}
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    Expected Duration
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="300"
+                          value={archiveDurationMinutes}
+                          onChange={(e) => setArchiveDurationMinutes(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          className="block w-full rounded-md border border-input bg-background text-foreground text-sm p-2 pr-7 focus:ring-1 focus:ring-primary focus:outline-none"
+                        />
+                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">m</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground mt-0.5 block">Minutes</span>
+                    </div>
+                    <div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={archiveDurationSeconds}
+                          onChange={(e) => setArchiveDurationSeconds(Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                          className="block w-full rounded-md border border-input bg-background text-foreground text-sm p-2 pr-7 focus:ring-1 focus:ring-primary focus:outline-none"
+                        />
+                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">s</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground mt-0.5 block">Seconds</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Days of the Week */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    Active Days
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setArchiveDays([0, 1, 2, 3, 4, 5, 6])}
+                      className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground font-medium"
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setArchiveDays([1, 2, 3, 4, 5])}
+                      className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground font-medium"
+                    >
+                      Mon-Fri
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {[
+                    { day: 0, label: 'Sun' },
+                    { day: 1, label: 'Mon' },
+                    { day: 2, label: 'Tue' },
+                    { day: 3, label: 'Wed' },
+                    { day: 4, label: 'Thu' },
+                    { day: 5, label: 'Fri' },
+                    { day: 6, label: 'Sat' },
+                  ].map(d => {
+                    const isSelected = archiveDays.includes(d.day)
+                    return (
+                      <button
+                        key={d.day}
+                        type="button"
+                        onClick={() => toggleArchiveDay(d.day)}
+                        className={`py-1.5 text-center text-xs font-semibold rounded-md border transition-all ${
+                          isSelected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-card text-muted-foreground border-border hover:bg-muted/50'
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Enabled toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border">
+                <div>
+                  <span className="text-xs font-semibold text-foreground block">Enable Track</span>
+                  <span className="text-[11px] text-muted-foreground block">
+                    Include in the active scheduled sequence
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={archiveIsEnabled}
+                  onChange={(e) => setArchiveIsEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary cursor-pointer accent-primary"
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setIsAddArchiveModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-input text-xs font-medium text-foreground hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveArchiveItem}
+                disabled={isSavingArchiveItem}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+              >
+                {isSavingArchiveItem ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    {editingArchiveItem ? 'Save Changes' : 'Add to Sequencer'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!archiveItemToDelete}
+        onClose={() => setArchiveItemToDelete(null)}
+        onConfirm={handleDeleteArchiveItem}
+        title="Remove Archive.org Stream Track"
+        description={`Are you sure you want to remove "${archiveItemToDelete?.title || ''}" from the stream sequencer?`}
+        confirmText="Remove Track"
+        variant="destructive"
+      />
     </div>
   )
 }
