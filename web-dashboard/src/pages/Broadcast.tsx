@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import '@/lib/lame-polyfill'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { generateTTS, generateCambAITTS, generateElevenLabsTTS, generateGoogleFreeTTS } from '@/lib/tts'
 import { translateText } from '@/lib/translate'
 import { Mic, Square, Play, Send, Type, Radio, CloudSun, Newspaper, RefreshCw, Languages, Plus, Edit2, Pause, ExternalLink, AlertCircle, Sparkles, Globe, ListOrdered, X, ArrowUp, ArrowDown, Clock, Calendar, Check, Volume2, Trash2, Loader2 } from 'lucide-react'
@@ -176,6 +176,7 @@ const predefinedAnnouncements = [
 
 export default function Broadcast() {
   const { schoolId, ttsEnabled, user } = useAuth()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'text' | 'voice' | 'stream'>('text')
   
   // Selective Device Targeting State
@@ -393,26 +394,35 @@ export default function Broadcast() {
   const [streamingArchiveId, setStreamingArchiveId] = useState<string | null>(null)
 
   // Fetch Archive.org Stream Items (Supabase + localStorage cache)
+  const archiveCacheKey = schoolId ? `autobell_archive_stream_${schoolId}` : 'autobell_archive_stream_default'
+
   const { data: archiveItems = [], isLoading: loadingArchiveItems, refetch: refetchArchiveItems } = useQuery<ArchiveStreamItem[]>({
     queryKey: ['archive_stream_items', schoolId],
     queryFn: async () => {
-      const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('archive_stream_items')
           .select('*')
-          .eq('school_id', activeSchoolId)
           .order('position', { ascending: true })
 
+        if (schoolId) {
+          query = query.eq('school_id', schoolId)
+        }
+
+        const { data, error } = await query
+
         if (!error && data) {
-          localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(data))
+          localStorage.setItem(archiveCacheKey, JSON.stringify(data))
           return data as ArchiveStreamItem[]
+        }
+        if (error) {
+          console.warn('Failed to query supabase archive_stream_items:', error)
         }
       } catch (err) {
         console.warn('Failed to query supabase archive_stream_items, checking local storage:', err)
       }
 
-      const cached = localStorage.getItem(`autobell_archive_stream_${activeSchoolId}`)
+      const cached = localStorage.getItem(archiveCacheKey)
       if (cached) {
         try {
           return JSON.parse(cached) as ArchiveStreamItem[]
@@ -501,7 +511,6 @@ export default function Broadcast() {
     }
 
     setIsSavingArchiveItem(true)
-    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
 
     try {
       const isEditing = !!editingArchiveItem
@@ -509,7 +518,7 @@ export default function Broadcast() {
 
       const payload = {
         id: isEditing ? editingArchiveItem.id : crypto.randomUUID(),
-        school_id: activeSchoolId,
+        school_id: schoolId || null,
         title: archiveTitle.trim(),
         url: cleanedUrl,
         start_time: archiveStartTime || '08:00',
@@ -521,12 +530,13 @@ export default function Broadcast() {
         updated_at: new Date().toISOString()
       }
 
+      // Upsert into Supabase
       const { error } = await supabase
         .from('archive_stream_items')
         .upsert(payload)
 
       if (error) {
-        console.warn('Supabase upsert failed, saving to local cache:', error)
+        console.error('Supabase upsert failed:', error)
       }
 
       let updatedList: ArchiveStreamItem[]
@@ -536,8 +546,10 @@ export default function Broadcast() {
         updatedList = [...archiveItems, payload as ArchiveStreamItem]
       }
       updatedList.sort((a, b) => a.position - b.position)
-      localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(updatedList))
+      localStorage.setItem(archiveCacheKey, JSON.stringify(updatedList))
 
+      // Instant UI update
+      queryClient.setQueryData(['archive_stream_items', schoolId], updatedList)
       await refetchArchiveItems()
       setIsAddArchiveModalOpen(false)
       setStatus({
@@ -556,7 +568,6 @@ export default function Broadcast() {
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     if (targetIndex < 0 || targetIndex >= archiveItems.length) return
 
-    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
     const newItems = [...archiveItems]
     const temp = newItems[index]
     newItems[index] = newItems[targetIndex]
@@ -567,12 +578,13 @@ export default function Broadcast() {
       position: idx + 1
     }))
 
-    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(resequenced))
+    localStorage.setItem(archiveCacheKey, JSON.stringify(resequenced))
+    queryClient.setQueryData(['archive_stream_items', schoolId], resequenced)
 
     try {
       const upserts = resequenced.map(item => ({
         id: item.id,
-        school_id: activeSchoolId,
+        school_id: item.school_id || schoolId || null,
         title: item.title,
         url: item.url,
         start_time: item.start_time,
@@ -593,24 +605,35 @@ export default function Broadcast() {
   }
 
   const handleToggleArchiveEnabled = async (item: ArchiveStreamItem) => {
-    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
     const updated = { ...item, is_enabled: !item.is_enabled, updated_at: new Date().toISOString() }
+    const updatedList = archiveItems.map(i => i.id === item.id ? updated : i)
+    localStorage.setItem(archiveCacheKey, JSON.stringify(updatedList))
+    queryClient.setQueryData(['archive_stream_items', schoolId], updatedList)
 
     try {
-      await supabase.from('archive_stream_items').upsert(updated)
+      await supabase.from('archive_stream_items').upsert({
+        id: updated.id,
+        school_id: updated.school_id || schoolId || null,
+        title: updated.title,
+        url: updated.url,
+        start_time: updated.start_time,
+        duration_minutes: updated.duration_minutes,
+        duration_seconds: updated.duration_seconds,
+        days_of_week: updated.days_of_week,
+        position: updated.position,
+        is_enabled: updated.is_enabled,
+        updated_at: updated.updated_at
+      })
     } catch (err) {
       console.warn('Failed to update toggle in Supabase:', err)
     }
 
-    const updatedList = archiveItems.map(i => i.id === item.id ? updated : i)
-    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(updatedList))
     await refetchArchiveItems()
   }
 
   const handleDeleteArchiveItem = async () => {
     if (!archiveItemToDelete) return
     const item = archiveItemToDelete
-    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
 
     try {
       await supabase.from('archive_stream_items').delete().eq('id', item.id)
@@ -623,11 +646,25 @@ export default function Broadcast() {
       ...it,
       position: idx + 1
     }))
-    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(resequenced))
+    localStorage.setItem(archiveCacheKey, JSON.stringify(resequenced))
+    queryClient.setQueryData(['archive_stream_items', schoolId], resequenced)
 
     try {
       if (resequenced.length > 0) {
-        await supabase.from('archive_stream_items').upsert(resequenced)
+        const upserts = resequenced.map(it => ({
+          id: it.id,
+          school_id: it.school_id || schoolId || null,
+          title: it.title,
+          url: it.url,
+          start_time: it.start_time,
+          duration_minutes: it.duration_minutes,
+          duration_seconds: it.duration_seconds,
+          days_of_week: it.days_of_week,
+          position: it.position,
+          is_enabled: it.is_enabled,
+          updated_at: new Date().toISOString()
+        }))
+        await supabase.from('archive_stream_items').upsert(upserts)
       }
     } catch (err) {
       console.warn('Failed to resequence after delete in Supabase:', err)
@@ -644,7 +681,6 @@ export default function Broadcast() {
       return
     }
 
-    const activeSchoolId = schoolId || 'a0000000-0000-0000-0000-000000000001'
     const chained: ArchiveStreamItem[] = []
     let currentStartTime = archiveItems[0].start_time || '08:00'
 
@@ -662,10 +698,24 @@ export default function Broadcast() {
       currentStartTime = `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`
     }
 
-    localStorage.setItem(`autobell_archive_stream_${activeSchoolId}`, JSON.stringify(chained))
+    localStorage.setItem(archiveCacheKey, JSON.stringify(chained))
+    queryClient.setQueryData(['archive_stream_items', schoolId], chained)
 
     try {
-      await supabase.from('archive_stream_items').upsert(chained)
+      const upserts = chained.map(item => ({
+        id: item.id,
+        school_id: item.school_id || schoolId || null,
+        title: item.title,
+        url: item.url,
+        start_time: item.start_time,
+        duration_minutes: item.duration_minutes,
+        duration_seconds: item.duration_seconds,
+        days_of_week: item.days_of_week,
+        position: item.position,
+        is_enabled: item.is_enabled,
+        updated_at: new Date().toISOString()
+      }))
+      await supabase.from('archive_stream_items').upsert(upserts)
     } catch (err) {
       console.warn('Failed to upsert chained timings:', err)
     }
