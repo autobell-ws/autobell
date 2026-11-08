@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { motion } from 'framer-motion'
@@ -14,6 +15,7 @@ import {
   Mail,
   Smartphone,
   Sliders,
+  MessageSquare,
   RefreshCw
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -253,14 +255,44 @@ export default function NotificationManagement() {
           </p>
         </div>
 
-        <button
-          onClick={handleSaveSettings}
-          disabled={saving}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium shadow-md hover:bg-primary/90 transition-all disabled:opacity-50"
+        <div className="flex items-center gap-3">
+          <Link
+            to="/super-admin/integrations"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 font-medium text-xs shadow-xs transition-all"
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-400" />
+            Email & WhatsApp API Gateway
+          </Link>
+          <button
+            onClick={handleSaveSettings}
+            disabled={saving}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium shadow-md hover:bg-primary/90 transition-all disabled:opacity-50 text-xs"
+          >
+            {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save Policy Changes
+          </button>
+        </div>
+      </div>
+
+      {/* WhatsApp & Email Integration Hub Shortcut Banner */}
+      <div className="p-4 rounded-xl border border-border bg-gradient-to-r from-emerald-500/10 via-sky-500/10 to-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-background border border-border shrink-0 shadow-xs">
+            <MessageSquare className="w-5 h-5 text-emerald-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-foreground">WhatsApp API & Email Gateway Forms</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Configure Meta WhatsApp Cloud API credentials, SMTP/Resend providers, and transactional message templates.
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/super-admin/integrations"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-xs shadow hover:bg-emerald-700 transition-colors shrink-0"
         >
-          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save Policy Changes
-        </button>
+          Open API & Gateway Forms &rarr;
+        </Link>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

@@ -29,6 +29,7 @@ import InventoryManagement from '@/pages/super-admin/InventoryManagement'
 import SuperAdminBackups from '@/pages/super-admin/Backups'
 import PartnerManagement from '@/pages/super-admin/PartnerManagement'
 import NotificationManagement from '@/pages/super-admin/NotificationManagement'
+import CommunicationIntegrations from '@/pages/super-admin/CommunicationIntegrations'
 import PreAnnouncementManagement from '@/pages/super-admin/PreAnnouncementManagement'
 import HealthDashboard from '@/pages/super-admin/HealthDashboard'
 
@@ -105,6 +106,7 @@ function App() {
                       <Route path="users" element={<UserManagement />} />
                       <Route path="partners" element={<PartnerManagement />} />
                       <Route path="notifications" element={<NotificationManagement />} />
+                      <Route path="integrations" element={<CommunicationIntegrations />} />
                       <Route path="pre-announcements" element={<PreAnnouncementManagement />} />
                       <Route path="inventory" element={<InventoryManagement />} />
                       <Route path="backups" element={<SuperAdminBackups />} />

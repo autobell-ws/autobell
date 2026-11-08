@@ -1,3 +1,4 @@
+import { sendEmailNotification, sendWhatsAppNotification } from '@/lib/communication'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useNavigate, Link } from 'react-router-dom'
@@ -85,6 +86,29 @@ export default function Register() {
       }
 
       setSuccess(true)
+
+      // Dispatch Account Registration Email & WhatsApp notifications
+      const regVars = {
+        user_name: fullName.trim(),
+        school_name: schoolName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        login_url: window.location.origin + '/login',
+        support_phone: '+92 300 1234567'
+      }
+      sendEmailNotification({
+        templateKey: 'account_registration',
+        recipient: email.trim(),
+        variables: regVars
+      }).catch(err => console.warn('Account registration email dispatch:', err))
+
+      if (phone.trim()) {
+        sendWhatsAppNotification({
+          templateKey: 'account_registration',
+          recipientPhone: phone.trim(),
+          variables: regVars
+        }).catch(err => console.warn('Account registration WhatsApp dispatch:', err))
+      }
 
       // 3. Check for pending device setup from deep link
       const pendingClaim = localStorage.getItem('autobell_pending_claim')

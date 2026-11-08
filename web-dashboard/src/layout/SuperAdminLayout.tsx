@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { LayoutDashboard, School, Package, LogOut, Menu, X, Users, DatabaseBackup, Handshake, BellRing, Volume2, Activity, Ticket, FileText } from 'lucide-react'
+import { LayoutDashboard, School, Package, LogOut, Menu, X, Users, DatabaseBackup, Handshake, BellRing, MessageSquare, Volume2, Activity, Ticket, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
@@ -15,6 +15,7 @@ export default function SuperAdminLayout() {
     { name: 'User Management', href: '/super-admin/users', icon: Users },
     { name: 'Partner Management', href: '/super-admin/partners', icon: Handshake },
     { name: 'Notification Policy', href: '/super-admin/notifications', icon: BellRing },
+    { name: 'Email & WhatsApp APIs', href: '/super-admin/integrations', icon: MessageSquare },
     { name: 'Pre-Announcements', href: '/super-admin/pre-announcements', icon: Volume2 },
     { name: 'Inventory', href: '/super-admin/inventory', icon: Package },
     { name: 'System Health', href: '/super-admin/health', icon: Activity },
