@@ -220,13 +220,15 @@ export async function sendEmailNotification(options: {
   subject?: string
   bodyHtml?: string
   variables?: Record<string, string | number | undefined | null>
-}): Promise<{ success: boolean; status: 'sent' | 'simulated' | 'failed'; message: string; logId?: string }> {
-  const { templateKey, recipient, variables = {} } = options
+  testMode?: boolean
+  customConfig?: EmailIntegrationConfig
+}): Promise<{ success: boolean; status: 'sent' | 'simulated' | 'failed'; message: string; logId?: string; details?: any }> {
+  const { templateKey, recipient, variables = {}, testMode = false, customConfig } = options
   let finalSubject = options.subject || ''
   let finalBodyHtml = options.bodyHtml || ''
 
   try {
-    const emailConfig = await getEmailConfig()
+    const emailConfig = customConfig || await getEmailConfig()
     
     // Resolve template if templateKey provided
     if (templateKey) {
@@ -249,56 +251,164 @@ export async function sendEmailNotification(options: {
     if (!finalSubject) finalSubject = 'AutoBell Notification'
     if (!finalBodyHtml) finalBodyHtml = '<p>Notification from AutoBell Cloud</p>'
 
-    const isSimulated = !emailConfig?.is_enabled || (!emailConfig.api_key && !emailConfig.smtp_user)
+    const isLive = (emailConfig?.is_enabled || testMode) && (emailConfig?.api_key || emailConfig?.smtp_user || emailConfig?.smtp_host)
 
-    let status: 'sent' | 'simulated' | 'failed' = isSimulated ? 'simulated' : 'sent'
+    if (!isLive) {
+      // Simulation Mode
+      const notice = 'Email logged in simulation mode (enable Email Integration with valid credentials to deliver to live inboxes)'
+      const { data: logEntry } = await supabase
+        .from('communication_logs')
+        .insert({
+          channel: 'email',
+          template_key: templateKey || null,
+          recipient,
+          subject: finalSubject,
+          payload: { variables, finalSubject, testMode },
+          status: 'simulated',
+          error_message: null,
+          response_data: { notice, renderedSubject: finalSubject, recipient }
+        })
+        .select('id')
+        .single()
+
+      return {
+        success: true,
+        status: 'simulated',
+        message: `Simulation Mode: Email formatted for ${recipient} (Gateway disabled)`,
+        logId: logEntry?.id
+      }
+    }
+
+    // --- LIVE PRODUCTION DISPATCH ---
+    // 1. Try Backend Vercel Serverless Function (/api/notify)
+    try {
+      const apiRes = await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_email',
+          recipient,
+          subject: finalSubject,
+          bodyHtml: finalBodyHtml,
+          templateKey,
+          variables,
+          config: emailConfig,
+          testMode
+        })
+      })
+
+      const apiJson = await apiRes.json().catch(() => null)
+      if (apiRes.ok && apiJson?.success) {
+        return {
+          success: true,
+          status: 'sent',
+          message: apiJson.message || `Email successfully delivered to ${recipient}`,
+          logId: apiJson.logId,
+          details: apiJson.details
+        }
+      } else if (apiJson && apiJson.status === 'failed') {
+        return {
+          success: false,
+          status: 'failed',
+          message: apiJson.message || apiJson.error || 'Email delivery failed',
+          logId: apiJson.logId
+        }
+      }
+    } catch (backendErr) {
+      console.warn('Backend /api/notify dispatch attempt bypassed or failed:', backendErr)
+    }
+
+    // 2. Direct Client-side REST Fallback (for Resend, SendGrid, Postmark, Webhook)
+    let status: 'sent' | 'simulated' | 'failed' = 'sent'
     let errorMessage: string | null = null
     let responseData: any = null
 
-    if (!isSimulated && emailConfig) {
-      // Real API Call if provider API Key configured (e.g. Resend)
-      if (emailConfig.provider === 'resend' && emailConfig.api_key) {
-        try {
-          const res = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${emailConfig.api_key}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              from: `${emailConfig.sender_name} <${emailConfig.sender_email}>`,
-              to: [recipient],
-              subject: finalSubject,
-              html: finalBodyHtml
-            })
+    if (emailConfig?.provider === 'resend' && emailConfig.api_key) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${emailConfig.api_key}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: `${emailConfig.sender_name || 'AutoBell'} <${emailConfig.sender_email}>`,
+            to: [recipient],
+            subject: finalSubject,
+            html: finalBodyHtml
           })
-          const resJson = await res.json()
-          if (!res.ok) {
-            status = 'failed'
-            errorMessage = resJson.message || 'Resend API error'
-          } else {
-            responseData = resJson
-          }
-        } catch (apiErr: any) {
+        })
+        const resJson = await res.json()
+        if (!res.ok) {
           status = 'failed'
-          errorMessage = apiErr.message || 'Network error connecting to email provider'
+          errorMessage = resJson.message || 'Resend API returned error'
+        } else {
+          responseData = resJson
         }
-      } else {
-        // SMTP / Generic webhook / fallback
-        responseData = {
-          provider: emailConfig.provider,
-          host: emailConfig.smtp_host,
-          port: emailConfig.smtp_port,
-          from: emailConfig.sender_email,
-          queued: true
-        }
+      } catch (err: any) {
+        status = 'failed'
+        errorMessage = err.message || 'Network error connecting to Resend'
       }
+    } else if (emailConfig?.provider === 'sendgrid' && emailConfig.api_key) {
+      try {
+        const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${emailConfig.api_key}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: recipient }] }],
+            from: { email: emailConfig.sender_email, name: emailConfig.sender_name },
+            subject: finalSubject,
+            content: [{ type: 'text/html', value: finalBodyHtml }]
+          })
+        })
+        if (!res.ok) {
+          const errText = await res.text()
+          status = 'failed'
+          errorMessage = `SendGrid error (${res.status}): ${errText}`
+        } else {
+          responseData = { provider: 'sendgrid', status: 'sent' }
+        }
+      } catch (err: any) {
+        status = 'failed'
+        errorMessage = err.message || 'Network error connecting to SendGrid'
+      }
+    } else if (emailConfig?.provider === 'postmark' && emailConfig.api_key) {
+      try {
+        const res = await fetch('https://api.postmarkapp.com/email', {
+          method: 'POST',
+          headers: {
+            'X-Postmark-Server-Token': emailConfig.api_key,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            From: `${emailConfig.sender_name} <${emailConfig.sender_email}>`,
+            To: recipient,
+            Subject: finalSubject,
+            HtmlBody: finalBodyHtml
+          })
+        })
+        const resJson = await res.json()
+        if (!res.ok) {
+          status = 'failed'
+          errorMessage = resJson.Message || 'Postmark returned error'
+        } else {
+          responseData = resJson
+        }
+      } catch (err: any) {
+        status = 'failed'
+        errorMessage = err.message || 'Network error connecting to Postmark'
+      }
+    } else if (emailConfig?.provider === 'smtp') {
+      // SMTP requires server-side Node.js environment
+      status = 'failed'
+      errorMessage = 'SMTP socket delivery requires the live Vercel API backend (/api/notify). When running in live production, Vercel dispatches via Node.js nodemailer.'
     } else {
-      responseData = {
-        notice: 'Email logged in simulation mode (enable Email Integration with valid credentials to deliver to live inboxes)',
-        renderedSubject: finalSubject,
-        recipient
-      }
+      status = 'failed'
+      errorMessage = `Unsupported email provider configuration: ${emailConfig?.provider}`
     }
 
     // Audit Log in communication_logs
@@ -309,7 +419,7 @@ export async function sendEmailNotification(options: {
         template_key: templateKey || null,
         recipient,
         subject: finalSubject,
-        payload: { variables, finalSubject },
+        payload: { variables, finalSubject, testMode },
         status,
         error_message: errorMessage,
         response_data: responseData
@@ -320,12 +430,11 @@ export async function sendEmailNotification(options: {
     return {
       success: status !== 'failed',
       status,
-      message: status === 'sent' 
-        ? `Email successfully sent to ${recipient}` 
-        : status === 'simulated'
-        ? `Email generated and logged in Simulation Mode for ${recipient}`
+      message: status === 'sent'
+        ? `Email successfully sent to ${recipient}`
         : `Email delivery failed: ${errorMessage}`,
-      logId: logEntry?.id
+      logId: logEntry?.id,
+      details: responseData
     }
   } catch (err: any) {
     console.error('Email dispatch error:', err)
@@ -346,12 +455,14 @@ export async function sendWhatsAppNotification(options: {
   recipientPhone: string
   bodyText?: string
   variables?: Record<string, string | number | undefined | null>
-}): Promise<{ success: boolean; status: 'sent' | 'simulated' | 'failed'; message: string; logId?: string }> {
-  const { templateKey, recipientPhone, variables = {} } = options
+  testMode?: boolean
+  customConfig?: WhatsAppIntegrationConfig
+}): Promise<{ success: boolean; status: 'sent' | 'simulated' | 'failed'; message: string; logId?: string; details?: any }> {
+  const { templateKey, recipientPhone, variables = {}, testMode = false, customConfig } = options
   let finalBodyText = options.bodyText || ''
 
   try {
-    const waConfig = await getWhatsAppConfig()
+    const waConfig = customConfig || await getWhatsAppConfig()
     const cleanPhone = normalizePhoneNumber(recipientPhone)
 
     // Resolve template if templateKey provided
@@ -371,21 +482,85 @@ export async function sendWhatsAppNotification(options: {
       finalBodyText = 'AutoBell Notification: Important system alert for your institution.'
     }
 
-    const isSimulated = !waConfig?.is_enabled || (!waConfig.api_key && !waConfig.api_endpoint)
+    const isLive = (waConfig?.is_enabled || testMode) && (waConfig?.api_key || waConfig?.api_endpoint || waConfig?.account_sid)
 
-    let status: 'sent' | 'simulated' | 'failed' = isSimulated ? 'simulated' : 'sent'
+    if (!isLive) {
+      // Simulation Mode
+      const notice = 'WhatsApp message logged in simulation mode (configure and enable WhatsApp API settings to dispatch live WhatsApp messages)'
+      const { data: logEntry } = await supabase
+        .from('communication_logs')
+        .insert({
+          channel: 'whatsapp',
+          template_key: templateKey || null,
+          recipient: cleanPhone,
+          payload: { variables, finalBodyText, testMode },
+          status: 'simulated',
+          error_message: null,
+          response_data: { notice, cleanPhone, renderedMessage: finalBodyText }
+        })
+        .select('id')
+        .single()
+
+      return {
+        success: true,
+        status: 'simulated',
+        message: `Simulation Mode: WhatsApp message formatted for ${cleanPhone} (Gateway disabled)`,
+        logId: logEntry?.id
+      }
+    }
+
+    // --- LIVE PRODUCTION DISPATCH ---
+    // 1. Try Backend Vercel Serverless Function (/api/notify)
+    try {
+      const apiRes = await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_whatsapp',
+          recipient: cleanPhone,
+          bodyText: finalBodyText,
+          templateKey,
+          variables,
+          config: waConfig,
+          testMode
+        })
+      })
+
+      const apiJson = await apiRes.json().catch(() => null)
+      if (apiRes.ok && apiJson?.success) {
+        return {
+          success: true,
+          status: 'sent',
+          message: apiJson.message || `WhatsApp message dispatched successfully to ${cleanPhone}`,
+          logId: apiJson.logId,
+          details: apiJson.details
+        }
+      } else if (apiJson && apiJson.status === 'failed') {
+        return {
+          success: false,
+          status: 'failed',
+          message: apiJson.message || apiJson.error || 'WhatsApp message dispatch failed',
+          logId: apiJson.logId
+        }
+      }
+    } catch (backendErr) {
+      console.warn('Backend /api/notify dispatch attempt bypassed or failed:', backendErr)
+    }
+
+    // 2. Direct Client-side REST Fallback
+    let status: 'sent' | 'simulated' | 'failed' = 'sent'
     let errorMessage: string | null = null
     let responseData: any = null
 
-    if (!isSimulated && waConfig) {
+    if (waConfig) {
       if (waConfig.provider === 'meta' && waConfig.api_key && waConfig.phone_number_id) {
-        // Meta WhatsApp Cloud API
         try {
-          const endpoint = waConfig.api_endpoint.replace('{PHONE_NUMBER_ID}', waConfig.phone_number_id)
+          const endpoint = waConfig.api_endpoint.replace('{PHONE_NUMBER_ID}', waConfig.phone_number_id.trim())
+          const digitsOnly = cleanPhone.replace(/\D/g, '')
           const metaPayload = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
-            to: cleanPhone.replace('+', ''),
+            to: digitsOnly,
             type: 'text',
             text: {
               preview_url: true,
@@ -396,7 +571,7 @@ export async function sendWhatsAppNotification(options: {
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${waConfig.api_key}`,
+              'Authorization': `Bearer ${waConfig.api_key.trim()}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify(metaPayload)
@@ -405,7 +580,6 @@ export async function sendWhatsAppNotification(options: {
           if (!res.ok) {
             status = 'failed'
             errorMessage = resJson.error?.message || 'Meta WhatsApp API returned an error'
-            responseData = resJson
           } else {
             responseData = resJson
           }
@@ -413,38 +587,56 @@ export async function sendWhatsAppNotification(options: {
           status = 'failed'
           errorMessage = apiErr.message || 'Failed connecting to Meta WhatsApp Cloud API'
         }
-      } else if (waConfig.provider === 'twilio' && waConfig.api_key && waConfig.account_sid) {
-        // Twilio Programmable Messaging WhatsApp
+      } else if (waConfig.provider === 'ultramsg' && waConfig.api_key) {
         try {
-          const url = `https://api.twilio.com/2010-04-01/Accounts/${waConfig.account_sid}/Messages.json`
-          const params = new URLSearchParams()
-          params.append('From', waConfig.sender_phone.startsWith('whatsapp:') ? waConfig.sender_phone : `whatsapp:${waConfig.sender_phone}`)
-          params.append('To', `whatsapp:${cleanPhone}`)
-          params.append('Body', finalBodyText)
-
-          const authHeader = 'Basic ' + btoa(`${waConfig.account_sid}:${waConfig.api_key}`)
-          const res = await fetch(url, {
+          const endpoint = waConfig.api_endpoint || 'https://api.ultramsg.com/messages/chat'
+          const digitsOnly = cleanPhone.replace(/\D/g, '')
+          const res = await fetch(endpoint, {
             method: 'POST',
-            headers: {
-              'Authorization': authHeader,
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: params.toString()
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: waConfig.api_key,
+              to: digitsOnly,
+              body: finalBodyText
+            })
           })
-          const resJson = await res.json()
-          if (!res.ok) {
+          const resJson = await res.json().catch(() => ({ status: res.statusText }))
+          if (!res.ok || resJson.error) {
             status = 'failed'
-            errorMessage = resJson.message || 'Twilio WhatsApp API error'
-            responseData = resJson
+            errorMessage = resJson.error || `UltraMsg error: ${res.statusText}`
           } else {
             responseData = resJson
           }
-        } catch (apiErr: any) {
+        } catch (uErr: any) {
           status = 'failed'
-          errorMessage = apiErr.message || 'Failed connecting to Twilio API'
+          errorMessage = uErr.message || 'UltraMsg connection error'
         }
+      } else if (waConfig.provider === 'green_api' && waConfig.api_endpoint) {
+        try {
+          const digitsOnly = cleanPhone.replace(/\D/g, '')
+          const res = await fetch(waConfig.api_endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId: `${digitsOnly}@c.us`,
+              message: finalBodyText
+            })
+          })
+          const resJson = await res.json().catch(() => ({ status: res.statusText }))
+          if (!res.ok) {
+            status = 'failed'
+            errorMessage = `Green API error (${res.status})`
+          } else {
+            responseData = resJson
+          }
+        } catch (gErr: any) {
+          status = 'failed'
+          errorMessage = gErr.message || 'Green API connection error'
+        }
+      } else if (waConfig.provider === 'twilio') {
+        status = 'failed'
+        errorMessage = 'Twilio API requires server-side execution due to browser CORS policies. Handled on live Vercel deployment.'
       } else if (waConfig.api_endpoint) {
-        // Generic Webhook / UltraMsg / Wasapi
         try {
           const res = await fetch(waConfig.api_endpoint, {
             method: 'POST',
@@ -464,7 +656,6 @@ export async function sendWhatsAppNotification(options: {
           if (!res.ok) {
             status = 'failed'
             errorMessage = `Endpoint returned status ${res.status}`
-            responseData = resJson
           } else {
             responseData = resJson
           }
@@ -472,12 +663,6 @@ export async function sendWhatsAppNotification(options: {
           status = 'failed'
           errorMessage = webhookErr.message || 'Custom webhook failed'
         }
-      }
-    } else {
-      responseData = {
-        notice: 'WhatsApp message logged in simulation mode (configure and enable WhatsApp API settings to dispatch live WhatsApp messages)',
-        cleanPhone,
-        renderedMessage: finalBodyText
       }
     }
 
@@ -488,7 +673,7 @@ export async function sendWhatsAppNotification(options: {
         channel: 'whatsapp',
         template_key: templateKey || null,
         recipient: cleanPhone,
-        payload: { variables, finalBodyText },
+        payload: { variables, finalBodyText, testMode },
         status,
         error_message: errorMessage,
         response_data: responseData
@@ -501,10 +686,9 @@ export async function sendWhatsAppNotification(options: {
       status,
       message: status === 'sent'
         ? `WhatsApp message dispatched successfully to ${cleanPhone}`
-        : status === 'simulated'
-        ? `WhatsApp message formatted and logged in Simulation Mode for ${cleanPhone}`
         : `WhatsApp delivery failed: ${errorMessage}`,
-      logId: logEntry?.id
+      logId: logEntry?.id,
+      details: responseData
     }
   } catch (err: any) {
     console.error('WhatsApp dispatch error:', err)
@@ -515,3 +699,4 @@ export async function sendWhatsAppNotification(options: {
     }
   }
 }
+

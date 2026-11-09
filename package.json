@@ -1,6 +1,7 @@
 {
   "name": "autobell-monorepo",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "npm --prefix web-dashboard run build",
     "deploy:all": "node deploy-agent.mjs"
@@ -9,6 +10,7 @@
     "@breezystack/lamejs": "^1.2.7",
     "@supabase/supabase-js": "^2.112.3",
     "mpg123-decoder": "^1.0.3",
+    "nodemailer": "^6.9.16",
     "pg": "^8.22.0"
   }
 }
