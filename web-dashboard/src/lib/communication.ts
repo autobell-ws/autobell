@@ -271,7 +271,7 @@ export async function sendEmailNotification(options: {
         if (edgeRes.ok && edgeJson?.success) {
           return {
             success: true,
-            status: edgeJson.status || 'sent',
+            status: 'sent',
             message: edgeJson.message || `Email sent to ${recipient}`,
             logId: edgeJson.logId,
             details: edgeJson.details
@@ -279,17 +279,21 @@ export async function sendEmailNotification(options: {
         } else {
           return {
             success: false,
-            status: edgeJson?.status || 'failed',
+            status: 'failed',
             message: edgeJson?.message || edgeJson?.error || 'Email delivery failed',
             logId: edgeJson?.logId
           }
         }
       } catch (err: any) {
-        console.warn('Anonymous edge send-email failed:', err)
+        return {
+          success: false,
+          status: 'failed',
+          message: err.message || 'Failed connecting to AutoBell Edge SMTP service'
+        }
       }
     }
 
-    const isLive = (emailConfig?.is_enabled || testMode) && (emailConfig?.api_key || emailConfig?.smtp_user || emailConfig?.smtp_host)
+    const isLive = (emailConfig.is_enabled || testMode) && (emailConfig.api_key || emailConfig.smtp_user || emailConfig.smtp_host)
 
     if (!isLive) {
       // Simulation Mode
@@ -319,7 +323,7 @@ export async function sendEmailNotification(options: {
 
     // --- LIVE PRODUCTION DISPATCH ---
     // 1. If provider is SMTP, dispatch via dedicated Supabase Edge Function (Deno TLS socket to mail.digitapbs.pk)
-    if (emailConfig?.provider === 'smtp') {
+    if (emailConfig.provider === 'smtp') {
       try {
         const edgeRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
@@ -344,7 +348,7 @@ export async function sendEmailNotification(options: {
         if (edgeRes.ok && edgeJson?.success) {
           return {
             success: true,
-            status: edgeJson.status || 'sent',
+            status: 'sent',
             message: edgeJson.message || `Email successfully delivered to ${recipient}`,
             logId: edgeJson.logId,
             details: edgeJson.details
@@ -368,50 +372,12 @@ export async function sendEmailNotification(options: {
       }
     }
 
-    // 2. Try Backend Vercel Serverless Function (/api/notify) for other server-side providers
-    try {
-      const apiRes = await fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'send_email',
-          recipient,
-          subject: finalSubject,
-          bodyHtml: finalBodyHtml,
-          templateKey,
-          variables,
-          config: emailConfig,
-          testMode
-        })
-      })
-
-      const apiJson = await apiRes.json().catch(() => null)
-      if (apiRes.ok && apiJson?.success) {
-        return {
-          success: true,
-          status: 'sent',
-          message: apiJson.message || `Email successfully delivered to ${recipient}`,
-          logId: apiJson.logId,
-          details: apiJson.details
-        }
-      } else if (apiJson && apiJson.status === 'failed') {
-        return {
-          success: false,
-          status: 'failed',
-          message: apiJson.message || apiJson.error || 'Email delivery failed',
-          logId: apiJson.logId
-        }
-      }
-    } catch (backendErr) {
-      console.warn('Backend /api/notify dispatch attempt bypassed or failed:', backendErr)
-    }
-
-    // 3. Direct Client-side REST Fallback (for Resend, SendGrid, Postmark, Webhook)
+    // 2. Direct Client-side REST Fallback (for Resend, SendGrid, Postmark, Webhook)
     let status: 'sent' | 'simulated' | 'failed' = 'sent'
     let errorMessage: string | null = null
     let responseData: any = null
 
-    if (emailConfig?.provider === 'resend' && emailConfig.api_key) {
+    if (emailConfig.provider === 'resend' && emailConfig.api_key) {
       try {
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -437,7 +403,7 @@ export async function sendEmailNotification(options: {
         status = 'failed'
         errorMessage = err.message || 'Network error connecting to Resend'
       }
-    } else if (emailConfig?.provider === 'sendgrid' && emailConfig.api_key) {
+    } else if (emailConfig.provider === 'sendgrid' && emailConfig.api_key) {
       try {
         const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
           method: 'POST',
@@ -463,7 +429,7 @@ export async function sendEmailNotification(options: {
         status = 'failed'
         errorMessage = err.message || 'Network error connecting to SendGrid'
       }
-    } else if (emailConfig?.provider === 'postmark' && emailConfig.api_key) {
+    } else if (emailConfig.provider === 'postmark' && emailConfig.api_key) {
       try {
         const res = await fetch('https://api.postmarkapp.com/email', {
           method: 'POST',
@@ -490,12 +456,9 @@ export async function sendEmailNotification(options: {
         status = 'failed'
         errorMessage = err.message || 'Network error connecting to Postmark'
       }
-    } else if (emailConfig?.provider === 'smtp') {
-      status = 'sent'
-      responseData = { provider: 'smtp', status: 'sent via Edge SMTP' }
     } else {
       status = 'failed'
-      errorMessage = `Unsupported email provider configuration: ${emailConfig?.provider}`
+      errorMessage = `Unsupported email provider configuration: ${emailConfig.provider}`
     }
 
     // Audit Log in communication_logs
