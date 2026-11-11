@@ -19,9 +19,7 @@ import {
   Printer,
   Sliders,
   Split,
-  Radio,
-  Layers,
-  Info
+  Radio
 } from 'lucide-react'
 import { DeviceRegistrationModal } from '../components/DeviceRegistrationModal'
 import { DeviceSettingsModal } from '../components/DeviceSettingsModal'
