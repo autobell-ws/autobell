@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { X, Save, Volume2, Calendar, BellRing, Play, Pause, Cpu, Upload } from 'lucide-react'
+import { X, Save, Volume2, Calendar, BellRing, Play, Pause, Cpu, Upload, Sliders, Split, Radio, Info } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 
 type BellProfileOption = {
@@ -25,6 +25,13 @@ type DeviceRecord = {
   pre_announcement_delay_seconds?: number | null
   pre_announcement_volume?: number | null
   board_type?: string | null
+  channel_mode?: 'unified' | 'dual_channel' | null
+  volume_left?: number | null
+  volume_right?: number | null
+  profile_id_left?: string | null
+  profile_id_right?: string | null
+  channel_label_left?: string | null
+  channel_label_right?: string | null
 }
 
 type DeviceSettingsModalProps = {
@@ -37,8 +44,17 @@ type DeviceSettingsModalProps = {
 export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: DeviceSettingsModalProps) {
   const { schoolId } = useAuth()
   const [volume, setVolume] = useState<number>(21)
+
+  // Dual-Channel State
+  const [channelMode, setChannelMode] = useState<'unified' | 'dual_channel'>('unified')
+  const [channelLabelLeft, setChannelLabelLeft] = useState<string>('Left Channel')
+  const [channelLabelRight, setChannelLabelRight] = useState<string>('Right Channel')
+  const [volumeLeft, setVolumeLeft] = useState<number>(21)
+  const [volumeRight, setVolumeRight] = useState<number>(21)
+  const [profileIdLeft, setProfileIdLeft] = useState<string>('INHERIT')
+  const [profileIdRight, setProfileIdRight] = useState<string>('INHERIT')
   
-  // Profile Assignment State
+  // Profile Assignment State (Unified)
   const [profileId, setProfileId] = useState<string>('INHERIT')
   const [profiles, setProfiles] = useState<BellProfileOption[]>([])
 
@@ -179,6 +195,14 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
       setVolume(device.volume ?? 21)
       setProfileId(device.profile_id || 'INHERIT')
 
+      setChannelMode((device.channel_mode as 'unified' | 'dual_channel') || 'unified')
+      setChannelLabelLeft(device.channel_label_left || 'Left Channel')
+      setChannelLabelRight(device.channel_label_right || 'Right Channel')
+      setVolumeLeft(device.volume_left ?? device.volume ?? 21)
+      setVolumeRight(device.volume_right ?? device.volume ?? 21)
+      setProfileIdLeft(device.profile_id_left || device.profile_id || 'INHERIT')
+      setProfileIdRight(device.profile_id_right || device.profile_id || 'INHERIT')
+
       const hasCustomPa = 
         device.pre_announcement_enabled !== null || 
         device.pre_announcement_id !== null || 
@@ -236,13 +260,23 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
     try {
       if (!schoolId) throw new Error('No school ID found')
 
+      const isMini = device.board_type === 'ESP32-C3 Mini'
       const targetProfileId = profileId === 'INHERIT' ? null : profileId
+      const targetProfileLeft = profileIdLeft === 'INHERIT' ? null : profileIdLeft
+      const targetProfileRight = profileIdRight === 'INHERIT' ? null : profileIdRight
 
       // Build updates object
-      const isMini = device.board_type === 'ESP32-C3 Mini'
+      const effectiveVol = channelMode === 'dual_channel' ? volumeLeft : volume
       const updates = {
-        volume: isMini ? null : volume,
-        profile_id: targetProfileId,
+        volume: isMini ? null : effectiveVol,
+        volume_left: isMini ? null : (channelMode === 'dual_channel' ? volumeLeft : volume),
+        volume_right: isMini ? null : (channelMode === 'dual_channel' ? volumeRight : volume),
+        channel_mode: isMini ? 'unified' : channelMode,
+        profile_id: isMini ? targetProfileId : (channelMode === 'dual_channel' ? targetProfileLeft : targetProfileId),
+        profile_id_left: isMini ? null : (channelMode === 'dual_channel' ? targetProfileLeft : targetProfileId),
+        profile_id_right: isMini ? null : (channelMode === 'dual_channel' ? targetProfileRight : targetProfileId),
+        channel_label_left: channelLabelLeft.trim() || 'Left Channel',
+        channel_label_right: channelLabelRight.trim() || 'Right Channel',
         pre_announcement_enabled: isMini ? null : (useCustomPa ? paEnabled : null),
         pre_announcement_id: isMini ? null : (useCustomPa && paSoundId ? paSoundId : null),
         pre_announcement_delay_seconds: isMini ? null : (useCustomPa ? paDelay : null),
@@ -261,12 +295,22 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
         ...(isMini ? [] : [{
           device_id: device.id,
           command: 'SET_VOLUME',
-          payload: { volume: volume }
+          payload: { 
+            volume: updates.volume,
+            channel: channelMode === 'dual_channel' ? 'both' : 'unified',
+            volume_left: updates.volume_left,
+            volume_right: updates.volume_right
+          }
         }]),
         {
           device_id: device.id,
           command: 'SYNC_SCHEDULES',
-          payload: { source: 'device_settings_modal' }
+          payload: { 
+            source: 'device_settings_modal',
+            channel_mode: channelMode,
+            profile_id_left: updates.profile_id_left,
+            profile_id_right: updates.profile_id_right
+          }
         }
       ]
 
@@ -297,65 +341,282 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Profile Assignment Section */}
-          <div className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4">
-            <h4 className="font-medium text-foreground flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-primary" />
-              Schedule Profile Assignment
-            </h4>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Active Profile for this Bell
-              </label>
-              <select
-                value={profileId}
-                onChange={(e) => setProfileId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none"
-              >
-                <option value="INHERIT">✨ Inherit School Active Profile (Default)</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>
-                    📋 {p.name} {p.is_active ? '(School Active)' : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Selecting a specific profile allows this bell unit to run a custom schedule independently from other school bells.
-              </p>
+          {/* Schedule & Volume Configuration */}
+          {device.board_type === 'ESP32-C3 Mini' ? (
+            /* Single Relay Schedule Profile for C3 Mini */
+            <div className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4">
+              <h4 className="font-medium text-foreground flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-primary" />
+                Schedule Profile Assignment (Relay Bell)
+              </h4>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Active Profile for this Relay Bell
+                </label>
+                <select
+                  value={profileId}
+                  onChange={(e) => setProfileId(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="INHERIT">✨ Inherit School Active Profile (Default)</option>
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id}>
+                      📋 {p.name} {p.is_active ? '(School Active)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Compact Mini controls a 5V relay output according to the chosen schedule profile.
+                </p>
+              </div>
             </div>
-          </div>
-
-          {device.board_type !== 'ESP32-C3 Mini' && (
+          ) : (
             <>
-              {/* Volume Control Section */}
-              <div className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-4">
-                <h4 className="font-medium text-foreground flex items-center gap-2 text-sm">
-                  <Volume2 className="h-4 w-4 text-primary" />
-                  Volume Control
-                </h4>
+              {/* Dual-Channel Audio Architecture for Standard AutoBell */}
+              <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/[0.03] p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/60 pb-3">
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-muted-foreground flex justify-between">
-                    <span>Current Level: <b>{volume} / 21</b></span>
-                    <span className="text-[11px] text-primary font-medium">
-                      {volume === 0 ? 'Muted' : volume <= 7 ? 'Low' : volume <= 15 ? 'Medium' : volume <= 20 ? 'High' : 'Maximum'}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="21"
-                    value={volume}
-                    onChange={(e) => setVolume(parseInt(e.target.value))}
-                    className="h-2 w-full cursor-pointer rounded-lg appearance-none bg-primary/20 accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
-                    <span>Mute (0)</span>
-                    <span>Max (21)</span>
-                  </div>
+                  <h4 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+                    <Sliders className="h-4 w-4 text-primary" />
+                    Audio Channels & Schedule Output (Left & Right)
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    AutoBell hardware provides dual stereo audio outputs to drive two separate physical speaker zones.
+                  </p>
+                </div>
+
+                {/* Mode Selector Tabs */}
+                <div className="flex items-center rounded-lg bg-muted p-1 border border-border/60 self-start sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setChannelMode('unified')}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      channelMode === 'unified'
+                        ? 'bg-card text-foreground shadow-sm font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Radio className="h-3.5 w-3.5" />
+                    Unified Stereo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChannelMode('dual_channel')}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      channelMode === 'dual_channel'
+                        ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Split className="h-3.5 w-3.5" />
+                    Dual Independent Zones
+                  </button>
                 </div>
               </div>
 
-              {/* Pre-Announcement Override Section */}
+              {channelMode === 'unified' ? (
+                /* Unified Stereo Mode */
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground border border-border/40 flex items-start gap-2">
+                    <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <b>Unified Stereo Mode:</b> Both Left and Right speaker outputs play the same schedule profile at the same master volume. Switch to <b>Dual Independent Zones</b> above if you want different bell schedules or volumes in different wings/floors.
+                    </div>
+                  </div>
+
+                  {/* Unified Profile */}
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-primary" />
+                      Schedule Profile (Both Left & Right Speakers)
+                    </label>
+                    <select
+                      value={profileId}
+                      onChange={(e) => setProfileId(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none"
+                    >
+                      <option value="INHERIT">✨ Inherit School Active Profile (Default)</option>
+                      {profiles.map(p => (
+                        <option key={p.id} value={p.id}>
+                          📋 {p.name} {p.is_active ? '(School Active)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Unified Volume */}
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold text-foreground flex justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Volume2 className="h-3.5 w-3.5 text-primary" />
+                        Master Volume (Both Channels)
+                      </span>
+                      <span className="font-mono text-primary font-bold">
+                        {volume} / 21 ({volume === 0 ? 'Muted' : volume <= 7 ? 'Low' : volume <= 15 ? 'Medium' : volume <= 20 ? 'High' : 'Maximum'})
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="21"
+                      value={volume}
+                      onChange={(e) => setVolume(parseInt(e.target.value))}
+                      className="h-2 w-full cursor-pointer rounded-lg appearance-none bg-primary/20 accent-primary"
+                    />
+                    <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+                      <span>Mute (0)</span>
+                      <span>Max (21)</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Independent Dual-Channel Mode */
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-primary/10 p-3 text-xs text-primary border border-primary/20 flex items-start gap-2">
+                    <Split className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <b>Independent Dual Channels Active:</b> Left and Right outputs will trigger bells at their own configured times and profiles. Connect Zone 1 (e.g. Primary Wing) to Left Output, and Zone 2 (e.g. Secondary Wing / Library) to Right Output!
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Channel 1: Left Output */}
+                    <div className="rounded-xl border border-blue-500/30 bg-blue-500/[0.04] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
+                        <span className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white">L</span>
+                          Left Channel (Output 1)
+                        </span>
+                        <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                          Zone 1
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                          Zone / Area Name
+                        </label>
+                        <input
+                          type="text"
+                          value={channelLabelLeft}
+                          onChange={(e) => setChannelLabelLeft(e.target.value)}
+                          placeholder="e.g. Primary Wing, Floor 1"
+                          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                          Left Schedule Profile
+                        </label>
+                        <select
+                          value={profileIdLeft}
+                          onChange={(e) => setProfileIdLeft(e.target.value)}
+                          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-sm focus:border-blue-500 focus:outline-none"
+                        >
+                          <option value="INHERIT">✨ Inherit School Default</option>
+                          {profiles.map(p => (
+                            <option key={p.id} value={p.id}>
+                              📋 {p.name} {p.is_active ? '(Active)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="font-medium text-muted-foreground">Left Volume</span>
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                            {volumeLeft} / 21
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="21"
+                          value={volumeLeft}
+                          onChange={(e) => setVolumeLeft(parseInt(e.target.value))}
+                          className="h-2 w-full cursor-pointer rounded-lg appearance-none bg-blue-500/20 accent-blue-600"
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                          <span>0 (Mute)</span>
+                          <span>{volumeLeft <= 7 ? 'Low' : volumeLeft <= 15 ? 'Medium' : 'Loud'}</span>
+                          <span>21 (Max)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Channel 2: Right Output */}
+                    <div className="rounded-xl border border-purple-500/30 bg-purple-500/[0.04] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
+                        <span className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-black text-white">R</span>
+                          Right Channel (Output 2)
+                        </span>
+                        <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                          Zone 2
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                          Zone / Area Name
+                        </label>
+                        <input
+                          type="text"
+                          value={channelLabelRight}
+                          onChange={(e) => setChannelLabelRight(e.target.value)}
+                          placeholder="e.g. Secondary Wing, Floor 2"
+                          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-sm focus:border-purple-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                          Right Schedule Profile
+                        </label>
+                        <select
+                          value={profileIdRight}
+                          onChange={(e) => setProfileIdRight(e.target.value)}
+                          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-sm focus:border-purple-500 focus:outline-none"
+                        >
+                          <option value="INHERIT">✨ Inherit School Default</option>
+                          {profiles.map(p => (
+                            <option key={p.id} value={p.id}>
+                              📋 {p.name} {p.is_active ? '(Active)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="font-medium text-muted-foreground">Right Volume</span>
+                          <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                            {volumeRight} / 21
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="21"
+                          value={volumeRight}
+                          onChange={(e) => setVolumeRight(parseInt(e.target.value))}
+                          className="h-2 w-full cursor-pointer rounded-lg appearance-none bg-purple-500/20 accent-purple-600"
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                          <span>0 (Mute)</span>
+                          <span>{volumeRight <= 7 ? 'Low' : volumeRight <= 15 ? 'Medium' : 'Loud'}</span>
+                          <span>21 (Max)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Pre-Announcement Override Section */}
               <div className="space-y-4 rounded-lg border border-border/80 bg-muted/30 p-4">
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-foreground flex items-center gap-2 text-sm">

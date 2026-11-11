@@ -188,7 +188,7 @@ export default function Broadcast() {
       if (!schoolId) return []
       const { data, error } = await supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, bell_profiles(name)')
+        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, bell_profiles!bell_devices_profile_id_fkey(name)')
         .eq('school_id', schoolId)
         .order('name')
 

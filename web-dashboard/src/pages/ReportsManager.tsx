@@ -61,7 +61,7 @@ export default function ReportsManager({ viewMode }: ReportsManagerProps = {}) {
         setData((res as unknown as Record<string, unknown>[]) || [])
 
       } else if (activeReport === 'devices') {
-        let query = supabase.from('bell_devices').select('*, bell_profiles(name), schools(name)').order('name', { ascending: true })
+        let query = supabase.from('bell_devices').select('*, bell_profiles!bell_devices_profile_id_fkey(name), schools(name)').order('name', { ascending: true })
         if (!isSuperAdmin && schoolId) query = query.eq('school_id', schoolId)
         if (statusFilter !== 'all') query = query.eq('status', statusFilter)
         const { data: res } = await query

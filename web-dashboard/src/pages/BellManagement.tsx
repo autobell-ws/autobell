@@ -16,7 +16,12 @@ import {
   Clock, 
   AlertCircle,
   FileText,
-  Printer
+  Printer,
+  Sliders,
+  Split,
+  Radio,
+  Layers,
+  Info
 } from 'lucide-react'
 import { DeviceRegistrationModal } from '../components/DeviceRegistrationModal'
 import { DeviceSettingsModal } from '../components/DeviceSettingsModal'
@@ -47,6 +52,13 @@ type DeviceRecord = {
   subscription_end_date?: string | null
   payment_reference?: string | null
   activation_notes?: string | null
+  channel_mode?: 'unified' | 'dual_channel' | null
+  volume_left?: number | null
+  volume_right?: number | null
+  profile_id_left?: string | null
+  profile_id_right?: string | null
+  channel_label_left?: string | null
+  channel_label_right?: string | null
 }
 
 const ONLINE_TIMEOUT_MS = 15 * 60 * 1000
@@ -73,57 +85,161 @@ function DeviceVolumeSlider({
   onVolumeCommit 
 }: { 
   device: DeviceRecord; 
-  onVolumeCommit: (deviceId: string, volume: number) => void 
+  onVolumeCommit: (deviceId: string, volume: number, channel?: 'left' | 'right' | 'both') => void 
 }) {
-  const [localVol, setLocalVol] = useState<number>(device.volume ?? 21)
+  const isDual = device.channel_mode === 'dual_channel'
+
+  const [localMaster, setLocalMaster] = useState<number>(device.volume ?? 21)
+  const [localLeft, setLocalLeft] = useState<number>(device.volume_left ?? device.volume ?? 21)
+  const [localRight, setLocalRight] = useState<number>(device.volume_right ?? device.volume ?? 21)
 
   useEffect(() => {
-    setLocalVol(device.volume ?? 21)
-  }, [device.volume])
+    setLocalMaster(device.volume ?? 21)
+    setLocalLeft(device.volume_left ?? device.volume ?? 21)
+    setLocalRight(device.volume_right ?? device.volume ?? 21)
+  }, [device.volume, device.volume_left, device.volume_right])
 
-  const commitVolume = (newVol: number) => {
-    if (newVol !== (device.volume ?? 21)) {
-      onVolumeCommit(device.id, newVol)
-    }
+  if (isDual) {
+    return (
+      <div className="space-y-3 p-3 rounded-xl bg-muted/40 border border-border/70">
+        <div className="flex items-center justify-between text-xs border-b border-border/50 pb-2">
+          <span className="font-semibold text-foreground flex items-center gap-1.5">
+            <Sliders className="h-3.5 w-3.5 text-primary" />
+            Independent Channel Volume
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+            Dual L / R
+          </span>
+        </div>
+
+        {/* Left Channel Volume Slider */}
+        <div className="space-y-1 rounded-lg bg-blue-500/[0.04] border border-blue-500/20 p-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5 truncate">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white">L</span>
+              <span className="truncate">{device.channel_label_left || 'Left Channel'}</span>
+            </span>
+            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 shrink-0">
+              {localLeft} / 21
+            </span>
+          </div>
+          <div className="flex items-center gap-2 pt-0.5">
+            <input
+              type="range"
+              min="0"
+              max="21"
+              value={localLeft}
+              onChange={(e) => setLocalLeft(parseInt(e.target.value))}
+              onPointerUp={() => onVolumeCommit(device.id, localLeft, 'left')}
+              onKeyUp={() => onVolumeCommit(device.id, localLeft, 'left')}
+              className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-blue-500/20 accent-blue-600"
+              aria-label={`Adjust Left Channel volume for ${device.name || 'device'}`}
+            />
+            <button
+              onClick={() => {
+                const newVol = localLeft > 0 ? 0 : 21
+                setLocalLeft(newVol)
+                onVolumeCommit(device.id, newVol, 'left')
+              }}
+              className={`p-1.5 rounded-md border text-xs transition-colors shrink-0 ${
+                localLeft === 0
+                  ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                  : 'bg-background text-foreground border-border/60 hover:bg-muted'
+              }`}
+              title={localLeft === 0 ? "Unmute Left Channel" : "Mute Left Channel"}
+            >
+              {localLeft === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Right Channel Volume Slider */}
+        <div className="space-y-1 rounded-lg bg-purple-500/[0.04] border border-purple-500/20 p-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 truncate">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-purple-600 text-[10px] font-black text-white">R</span>
+              <span className="truncate">{device.channel_label_right || 'Right Channel'}</span>
+            </span>
+            <span className="font-mono font-bold text-purple-600 dark:text-purple-400 shrink-0">
+              {localRight} / 21
+            </span>
+          </div>
+          <div className="flex items-center gap-2 pt-0.5">
+            <input
+              type="range"
+              min="0"
+              max="21"
+              value={localRight}
+              onChange={(e) => setLocalRight(parseInt(e.target.value))}
+              onPointerUp={() => onVolumeCommit(device.id, localRight, 'right')}
+              onKeyUp={() => onVolumeCommit(device.id, localRight, 'right')}
+              className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-purple-500/20 accent-purple-600"
+              aria-label={`Adjust Right Channel volume for ${device.name || 'device'}`}
+            />
+            <button
+              onClick={() => {
+                const newVol = localRight > 0 ? 0 : 21
+                setLocalRight(newVol)
+                onVolumeCommit(device.id, newVol, 'right')
+              }}
+              className={`p-1.5 rounded-md border text-xs transition-colors shrink-0 ${
+                localRight === 0
+                  ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                  : 'bg-background text-foreground border-border/60 hover:bg-muted'
+              }`}
+              title={localRight === 0 ? "Unmute Right Channel" : "Mute Right Channel"}
+            >
+              {localRight === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
+  // Unified Mode
   return (
     <div className="space-y-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
       <div className="flex items-center justify-between text-xs">
         <span className="font-semibold text-foreground flex items-center gap-1.5">
           <Volume2 className="h-3.5 w-3.5 text-primary" />
-          Bell Volume
+          Master Bell Volume
         </span>
-        <span className="font-mono font-bold text-primary">
-          {localVol} / 21
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium border border-border/50">
+            Unified L+R
+          </span>
+          <span className="font-mono font-bold text-primary">
+            {localMaster} / 21
+          </span>
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <input
           type="range"
           min="0"
           max="21"
-          value={localVol}
-          onChange={(e) => setLocalVol(parseInt(e.target.value))}
-          onPointerUp={() => commitVolume(localVol)}
-          onKeyUp={() => commitVolume(localVol)}
+          value={localMaster}
+          onChange={(e) => setLocalMaster(parseInt(e.target.value))}
+          onPointerUp={() => onVolumeCommit(device.id, localMaster, 'both')}
+          onKeyUp={() => onVolumeCommit(device.id, localMaster, 'both')}
           className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-primary/20 accent-primary"
           aria-label={`Adjust volume for ${device.name || 'device'}`}
         />
         <button
           onClick={() => {
-            const newVol = localVol > 0 ? 0 : 21
-            setLocalVol(newVol)
-            onVolumeCommit(device.id, newVol)
+            const newVol = localMaster > 0 ? 0 : 21
+            setLocalMaster(newVol)
+            onVolumeCommit(device.id, newVol, 'both')
           }}
           className={`p-1.5 rounded-md border transition-colors ${
-            localVol === 0
+            localMaster === 0
               ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
               : 'bg-muted text-foreground border-border/50 hover:bg-muted/80'
           }`}
-          title={localVol === 0 ? "Unmute bell" : "Mute bell"}
+          title={localMaster === 0 ? "Unmute bell" : "Mute bell"}
         >
-          {localVol === 0 ? (
+          {localMaster === 0 ? (
             <VolumeX className="h-3.5 w-3.5" />
           ) : (
             <Volume2 className="h-3.5 w-3.5" />
@@ -135,7 +251,8 @@ function DeviceVolumeSlider({
 }
 
 export default function BellManagement() {
-  const { schoolId } = useAuth()
+  const { schoolId, role } = useAuth()
+  const isSuperAdmin = role === 'super_admin'
   const queryClient = useQueryClient()
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
@@ -158,19 +275,23 @@ export default function BellManagement() {
   const [isStickerModalOpen, setIsStickerModalOpen] = useState(false)
 
   const { data: devices, isLoading } = useQuery<DeviceRecord[]>({
-    queryKey: ['devices', schoolId],
+    queryKey: ['devices', schoolId, isSuperAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('bell_devices')
-        .select('*, bell_profiles(name)')
+        .select('*, bell_profiles!bell_devices_profile_id_fkey(name)')
         .order('name')
+      if (schoolId) {
+        query = query.eq('school_id', schoolId)
+      }
+      const { data, error } = await query
       if (error) {
         console.error("Error fetching devices:", error)
         throw error
       }
       return (data ?? []) as DeviceRecord[]
     },
-    enabled: !!schoolId,
+    enabled: !!schoolId || isSuperAdmin,
     refetchInterval: 15000 // Refresh every 15 seconds to catch heartbeats
   })
 
@@ -240,7 +361,7 @@ export default function BellManagement() {
 
   const sendCommandMutation = useMutation({
     mutationFn: async ({ deviceId, command, payload = {} }: { deviceId: string, command: string, payload?: Record<string, unknown> }) => {
-      if (!schoolId) throw new Error('No school ID found')
+      if (!schoolId && !isSuperAdmin) throw new Error('No school ID found')
       
       const { data: insertedCmd, error } = await supabase.from('command_queue').insert({
         device_id: deviceId,
@@ -284,13 +405,63 @@ export default function BellManagement() {
     }
   })
 
+  const { data: allProfiles } = useQuery({
+    queryKey: ['bell_profiles', schoolId, isSuperAdmin],
+    queryFn: async () => {
+      let query = supabase
+        .from('bell_profiles')
+        .select('id, name, is_active, board_type')
+        .order('name')
+      if (schoolId) {
+        query = query.eq('school_id', schoolId)
+      }
+      const { data, error } = await query
+      if (error) {
+        console.error('Error fetching bell profiles:', error)
+        return []
+      }
+      return data ?? []
+    },
+    enabled: !!schoolId || isSuperAdmin
+  })
+
+  const resolveProfileName = (profId?: string | null) => {
+    if (!profId || profId === 'INHERIT') {
+      const activeProf = allProfiles?.find(p => p.is_active)
+      return activeProf ? `${activeProf.name} (Default)` : 'School Default Profile'
+    }
+    const found = allProfiles?.find(p => p.id === profId)
+    return found ? found.name : 'Custom Profile'
+  }
+
   const updateVolumeMutation = useMutation({
-    mutationFn: async ({ deviceId, volume }: { deviceId: string; volume: number }) => {
-      if (!schoolId) throw new Error('No school ID found')
+    mutationFn: async ({ 
+      deviceId, 
+      volume, 
+      channel 
+    }: { 
+      deviceId: string; 
+      volume: number; 
+      channel?: 'left' | 'right' | 'both' 
+    }) => {
+      if (!schoolId && !isSuperAdmin) throw new Error('No school ID found')
+
+      const targetChannel = channel || 'both'
+      const updateData: any = {}
+
+      if (targetChannel === 'left') {
+        updateData.volume_left = volume
+      } else if (targetChannel === 'right') {
+        updateData.volume_right = volume
+      } else {
+        updateData.volume = volume
+        updateData.volume_left = volume
+        updateData.volume_right = volume
+      }
 
       const { error: dbError } = await supabase
         .from('bell_devices')
-        .update({ volume })
+        .update(updateData)
         .eq('id', deviceId)
 
       if (dbError) throw dbError
@@ -298,19 +469,58 @@ export default function BellManagement() {
       const { error: cmdError } = await supabase.from('command_queue').insert({
         device_id: deviceId,
         command: 'SET_VOLUME',
-        payload: { volume }
+        payload: { 
+          volume,
+          channel: targetChannel,
+          volume_left: updateData.volume_left,
+          volume_right: updateData.volume_right
+        }
       })
 
       if (cmdError) throw cmdError
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
-      setNotification({ type: 'success', message: `Volume set to ${variables.volume}/21 for bell device.` })
+      const chLabel = variables.channel === 'left' ? 'Left Channel' : variables.channel === 'right' ? 'Right Channel' : 'Master'
+      setNotification({ type: 'success', message: `${chLabel} volume set to ${variables.volume}/21.` })
       setTimeout(() => setNotification(null), 3000)
     },
     onError: (error) => {
       console.error('Error updating volume:', error)
       setNotification({ type: 'error', message: 'Failed to update volume. Please try again.' })
+      setTimeout(() => setNotification(null), 3000)
+    }
+  })
+
+  const toggleChannelModeMutation = useMutation({
+    mutationFn: async ({ deviceId, currentMode }: { deviceId: string; currentMode?: string | null }) => {
+      const newMode = currentMode === 'dual_channel' ? 'unified' : 'dual_channel'
+      const { error } = await supabase
+        .from('bell_devices')
+        .update({ channel_mode: newMode })
+        .eq('id', deviceId)
+      if (error) throw error
+
+      await supabase.from('command_queue').insert({
+        device_id: deviceId,
+        command: 'SYNC_SCHEDULES',
+        payload: { source: 'toggle_channel_mode', channel_mode: newMode }
+      })
+      return newMode
+    },
+    onSuccess: (newMode) => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] })
+      setNotification({ 
+        type: 'success', 
+        message: newMode === 'dual_channel' 
+          ? 'Switched to Dual Independent Zones (Left & Right)! You can now run different schedules and volumes per channel.' 
+          : 'Switched to Unified Stereo mode.' 
+      })
+      setTimeout(() => setNotification(null), 4000)
+    },
+    onError: (error) => {
+      console.error('Error toggling channel mode:', error)
+      setNotification({ type: 'error', message: 'Failed to change audio channel mode.' })
       setTimeout(() => setNotification(null), 3000)
     }
   })
@@ -374,8 +584,11 @@ export default function BellManagement() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {devices.map((device) => {
             const statusInfo = resolveDeviceStatus(device.status, device.last_heartbeat)
-            const profileName = device.bell_profiles?.name || 'School Active Profile (Default)'
-            const isCustomProfile = !!device.profile_id
+            const isDual = device.channel_mode === 'dual_channel' && device.board_type !== 'ESP32-C3 Mini'
+            const profileName = resolveProfileName(device.profile_id)
+            const leftProfileName = resolveProfileName(device.profile_id_left || device.profile_id)
+            const rightProfileName = resolveProfileName(device.profile_id_right || device.profile_id)
+            const isCustomProfile = !!device.profile_id || (isDual && (!!device.profile_id_left || !!device.profile_id_right))
             const hasCustomChime = device.pre_announcement_id !== null || device.pre_announcement_enabled !== null
 
             const actStatus = device.activation_status || 'pending_activation'
@@ -493,36 +706,109 @@ export default function BellManagement() {
                   </div>
                 )}
 
-                {/* Assigned Profile & Chime Badges */}
-                <div className="space-y-1.5 pt-1 border-t border-border/50">
-                  <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md ${
-                    isCustomProfile 
-                      ? 'bg-primary/10 text-primary border border-primary/20' 
-                      : 'bg-muted text-muted-foreground'
-                  }`}>
-                    <Calendar className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">Schedule: {profileName}</span>
-                  </div>
+                {/* Audio Output Channels & Schedule Display */}
+                {isDual ? (
+                  <div className="space-y-2 pt-1 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+                        <Split className="h-3.5 w-3.5 text-primary" />
+                        Dual Channels (Left & Right)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleChannelModeMutation.mutate({ deviceId: device.id, currentMode: device.channel_mode })}
+                        className="text-[10px] font-medium text-primary hover:underline flex items-center gap-1"
+                        title="Switch back to Unified Stereo Mode"
+                      >
+                        <Radio className="h-3 w-3" />
+                        Make Unified
+                      </button>
+                    </div>
 
-                  {device.board_type !== 'ESP32-C3 Mini' && (
-                    <>
-                      <div className={`flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md ${
-                        hasCustomChime 
-                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20' 
-                          : 'text-muted-foreground'
-                      }`}>
-                        <BellRing className="h-3 w-3 shrink-0" />
-                        <span className="truncate">
-                          Chime: {hasCustomChime ? 'Custom Override' : 'School Default'}
+                    {/* Left Channel Output Badge */}
+                    <div className="rounded-lg border border-blue-500/25 bg-blue-500/[0.04] p-2 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1 truncate">
+                          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white shrink-0">L</span>
+                          <span className="truncate">{device.channel_label_left || 'Left Channel'}</span>
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 shrink-0">
+                          Vol: {device.volume_left ?? device.volume ?? 21}/21
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                        <HardDrive className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span className="truncate">Hardware Offline Audio: Synced</span>
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                        <Calendar className="h-3 w-3 text-blue-500 shrink-0" />
+                        <span className="truncate">Schedule: <b className="text-foreground">{leftProfileName}</b></span>
                       </div>
-                    </>
-                  )}
-                </div>
+                    </div>
+
+                    {/* Right Channel Output Badge */}
+                    <div className="rounded-lg border border-purple-500/25 bg-purple-500/[0.04] p-2 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1 truncate">
+                          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-purple-600 text-[9px] font-black text-white shrink-0">R</span>
+                          <span className="truncate">{device.channel_label_right || 'Right Channel'}</span>
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400 shrink-0">
+                          Vol: {device.volume_right ?? device.volume ?? 21}/21
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                        <Calendar className="h-3 w-3 text-purple-500 shrink-0" />
+                        <span className="truncate">Schedule: <b className="text-foreground">{rightProfileName}</b></span>
+                      </div>
+                    </div>
+
+                    {/* Hardware Offline Audio Badge */}
+                    <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                      <HardDrive className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <span className="truncate">Hardware Offline Audio: Synced</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 pt-1 border-t border-border/50">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className={`flex-1 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md truncate ${
+                        isCustomProfile 
+                          ? 'bg-primary/10 text-primary border border-primary/20' 
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        <Calendar className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">Schedule: {profileName} (L+R)</span>
+                      </div>
+                      {device.board_type !== 'ESP32-C3 Mini' && (
+                        <button
+                          type="button"
+                          onClick={() => toggleChannelModeMutation.mutate({ deviceId: device.id, currentMode: device.channel_mode })}
+                          className="text-[10px] font-medium text-primary hover:underline flex items-center gap-1 px-1.5 py-0.5 rounded border border-primary/20 hover:bg-primary/10 shrink-0"
+                          title="Split into independent Left and Right speaker channels"
+                        >
+                          <Split className="h-3 w-3" />
+                          Split L/R
+                        </button>
+                      )}
+                    </div>
+
+                    {device.board_type !== 'ESP32-C3 Mini' && (
+                      <>
+                        <div className={`flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md ${
+                          hasCustomChime 
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20' 
+                            : 'text-muted-foreground'
+                        }`}>
+                          <BellRing className="h-3 w-3 shrink-0" />
+                          <span className="truncate">
+                            Chime: {hasCustomChime ? 'Custom Override' : 'School Default'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                          <HardDrive className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span className="truncate">Hardware Offline Audio: Synced</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div className="text-xs text-muted-foreground space-y-1 bg-muted/40 p-3 rounded-lg border border-border/40">
                   <div className="truncate"><strong>MAC:</strong> {device.mac_address || 'N/A'}</div>
@@ -556,7 +842,7 @@ export default function BellManagement() {
                 ) : (
                   <DeviceVolumeSlider 
                     device={device} 
-                    onVolumeCommit={(devId, vol) => updateVolumeMutation.mutate({ deviceId: devId, volume: vol })} 
+                    onVolumeCommit={(devId, vol, ch) => updateVolumeMutation.mutate({ deviceId: devId, volume: vol, channel: ch })} 
                   />
                 )}
               </div>
