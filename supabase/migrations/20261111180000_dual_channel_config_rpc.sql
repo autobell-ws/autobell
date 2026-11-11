@@ -372,3 +372,4 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.get_device_config(text) TO anon, authenticated, service_role;
+

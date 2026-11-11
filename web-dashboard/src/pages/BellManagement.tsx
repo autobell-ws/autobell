@@ -935,7 +935,6 @@ export default function BellManagement() {
           {devices.map((device) => {
             const statusInfo = resolveDeviceStatus(device.status, device.last_heartbeat)
             const isDual = device.channel_mode === 'dual_channel' && device.board_type !== 'ESP32-C3 Mini'
-            const hasCustomChime = device.pre_announcement_id !== null || device.pre_announcement_enabled !== null
 
             const actStatus = device.activation_status || 'pending_activation'
             const isExpired = device.subscription_end_date ? new Date(device.subscription_end_date).getTime() < Date.now() : false
@@ -1224,8 +1223,9 @@ export default function BellManagement() {
       <DeviceRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
-        onSubmit={(newDevice) => registerDeviceMutation.mutate(newDevice)}
-        isLoading={registerDeviceMutation.isPending}
+        onRegister={async (data) => {
+          await registerDeviceMutation.mutateAsync(data)
+        }}
       />
 
       <DeviceSettingsModal
@@ -1249,11 +1249,7 @@ export default function BellManagement() {
             setIsStickerModalOpen(false)
             setSelectedStickerDevice(null)
           }}
-          serialNumber={selectedStickerDevice.serialNumber}
-          macAddress={selectedStickerDevice.macAddress}
-          claimPin={selectedStickerDevice.claimPin}
-          modelName={selectedStickerDevice.modelName}
-          schoolName={selectedStickerDevice.schoolName}
+          device={selectedStickerDevice}
         />
       )}
 
