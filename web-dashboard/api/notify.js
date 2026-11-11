@@ -1,8 +1,8 @@
 import nodemailer from 'nodemailer';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://zoqzgirtrhpxodrutjvs.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcXpnaXJ0cmhweG9kcnV0anZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDk2MjgyOSwiZXhwIjoyMTA2NTM4ODI5fQ.-6obiCFLco05bMofL9Fz66mfiluqsQKIqbcnvqJD_cE';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://oopyelhldjyyoupetynq.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vcHllbGhsZGp5eW91cGV0eW5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM3MzA0ODgsImV4cCI6MjEwOTMwNjQ4OH0.Nw2qW21GJs9MjkC_U6rcHt3uCS846K2oB8j4WkvcLdQ';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

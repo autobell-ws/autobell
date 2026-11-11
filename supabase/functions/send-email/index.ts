@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://zoqzgirtrhpxodrutjvs.supabase.co'
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://oopyelhldjyyoupetynq.supabase.co'
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcXpnaXJ0cmhweG9kcnV0anZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDk2MjgyOSwiZXhwIjoyMTA2NTM4ODI5fQ.-6obiCFLco05bMofL9Fz66mfiluqsQKIqbcnvqJD_cE'
 
   try {
