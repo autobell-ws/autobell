@@ -138,7 +138,7 @@ export default function Login() {
               </div>
               <div>
                 <h4 className="text-xs font-bold text-white">Zero-Downtime Autonomous Schedules</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Bell schedules persist in ESP32 offline flash storage, ringing accurately even during internet outages.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Bell schedules persist in microcontroller offline flash storage, ringing accurately even during internet outages.</p>
               </div>
             </div>
 

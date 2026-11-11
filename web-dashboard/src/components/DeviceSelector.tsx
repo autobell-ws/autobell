@@ -319,7 +319,7 @@ export function DeviceSelector({
                       </span>
                       {isDual ? (
                         <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                          Dual Zones (PCM5102a)
+                          Dual Zones
                         </span>
                       ) : (
                         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

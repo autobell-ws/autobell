@@ -2255,7 +2255,7 @@ export default function Broadcast() {
                       Paste Archive.org links easily:
                     </p>
                     <p>
-                      You can paste web page links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/details/...</code>) or direct file links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/download/...</code>). The system automatically formats them for instant ESP32 speaker streaming.
+                      You can paste web page links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/details/...</code>) or direct file links (<code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">archive.org/download/...</code>). The system automatically formats them for instant speaker streaming.
                     </p>
                   </div>
                 </div>

@@ -122,7 +122,7 @@ function DualZoneController({
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
           <Split className="h-4 w-4 text-primary" />
-          PCM5102a Dual Outputs (Left & Right Zones)
+          Dual Channel Audio Outputs (Left & Right Zones)
         </span>
         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
           Independent Zones
@@ -130,7 +130,7 @@ function DualZoneController({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Left Zone (PCM5102a Output 1) */}
+        {/* Left Zone (Output 1) */}
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/[0.04] p-3 space-y-2.5 flex flex-col justify-between shadow-xs">
           <div className="space-y-2.5">
             {/* Header */}
@@ -233,7 +233,7 @@ function DualZoneController({
           </button>
         </div>
 
-        {/* Right Zone (PCM5102a Output 2) */}
+        {/* Right Zone (Output 2) */}
         <div className="rounded-xl border border-purple-500/30 bg-purple-500/[0.04] p-3 space-y-2.5 flex flex-col justify-between shadow-xs">
           <div className="space-y-2.5">
             {/* Header */}
@@ -896,7 +896,7 @@ export default function BellManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Bell Management</h2>
-          <p className="text-xs text-muted-foreground">Manage school bell hardware, PCM5102a dual-channel speaker zones, and custom period schedules.</p>
+          <p className="text-xs text-muted-foreground">Manage school bell hardware, dual-channel speaker zones, and custom period schedules.</p>
         </div>
         <button 
           onClick={() => setIsRegisterModalOpen(true)}
@@ -1056,7 +1056,7 @@ export default function BellManagement() {
                   <div className="flex items-center justify-between text-xs px-2 py-1 rounded-md bg-muted/30 border border-border/40">
                     <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <HardDrive className="h-3 w-3 text-emerald-500" />
-                      <span>PCM5102a DAC Outputs: <b>Stereo Left & Right</b></span>
+                      <span>Audio Outputs: <b>Stereo Left & Right</b></span>
                     </div>
                     <button
                       type="button"
