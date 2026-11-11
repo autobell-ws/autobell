@@ -179,8 +179,8 @@ export default function Broadcast() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'text' | 'voice' | 'stream'>('text')
   
-  // Selective Device Targeting State
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
+  // Selective Device & Zone Targeting State
+  const [selectedZoneKeys, setSelectedZoneKeys] = useState<string[]>([])
 
   const { data: devices = [], isLoading: loadingDevices } = useQuery<DeviceOption[]>({
     queryKey: ['devices_broadcast', schoolId],
@@ -188,7 +188,7 @@ export default function Broadcast() {
       if (!schoolId) return []
       const { data, error } = await supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, bell_profiles!bell_devices_profile_id_fkey(name)')
+        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, channel_mode, channel_label_left, channel_label_right, volume_left, volume_right, bell_profiles!bell_devices_profile_id_fkey(name)')
         .eq('school_id', schoolId)
         .order('name')
 
@@ -203,28 +203,64 @@ export default function Broadcast() {
         location_city: d.location_city,
         profile_id: d.profile_id,
         profile_name: d.bell_profiles?.name || 'School Active Profile',
-        stream_volume: d.stream_volume ?? 15
+        stream_volume: d.stream_volume ?? 15,
+        channel_mode: d.channel_mode || 'unified',
+        channel_label_left: d.channel_label_left || 'Left Zone (Output 1)',
+        channel_label_right: d.channel_label_right || 'Right Zone (Output 2)',
+        volume_left: d.volume_left ?? 15,
+        volume_right: d.volume_right ?? 15
       }))
     },
     enabled: !!schoolId
   })
 
-  // Select all devices by default when devices load initially
+  // Select all zones across all devices by default when devices load initially
   useEffect(() => {
-    if (devices.length > 0 && selectedDeviceIds.length === 0) {
-      setSelectedDeviceIds(devices.map(d => d.id))
+    if (devices.length > 0 && selectedZoneKeys.length === 0) {
+      const allKeys: string[] = []
+      devices.forEach(d => {
+        const isDual = d.channel_mode === 'dual_channel' || d.channel_mode === 'dual'
+        if (isDual) {
+          allKeys.push(`${d.id}:left`, `${d.id}:right`)
+        } else {
+          allKeys.push(`${d.id}:all`)
+        }
+      })
+      setSelectedZoneKeys(allKeys)
     }
   }, [devices])
 
+  // Helper to extract targeted devices along with their specific channel assignment
+  const getTargetedDevices = () => {
+    return devices
+      .map(d => {
+        const isDual = d.channel_mode === 'dual_channel' || d.channel_mode === 'dual'
+        if (!isDual) {
+          const isSelected = selectedZoneKeys.includes(`${d.id}:all`)
+          return isSelected ? { device: d, channel: 'both' as const } : null
+        }
+        const hasLeft = selectedZoneKeys.includes(`${d.id}:left`)
+        const hasRight = selectedZoneKeys.includes(`${d.id}:right`)
+        if (hasLeft && hasRight) return { device: d, channel: 'both' as const }
+        if (hasLeft) return { device: d, channel: 'left' as const }
+        if (hasRight) return { device: d, channel: 'right' as const }
+        return null
+      })
+      .filter((item): item is { device: DeviceOption; channel: 'left' | 'right' | 'both' } => item !== null)
+  }
+
+  const targetedDevices = getTargetedDevices()
+  const selectedDeviceIds = targetedDevices.map(t => t.device.id)
+
   // Sync stream volume from selected device
   useEffect(() => {
-    if (devices.length > 0 && selectedDeviceIds.length > 0) {
+    if (devices.length > 0 && targetedDevices.length > 0) {
       const targetDev = devices.find(d => selectedDeviceIds.includes(d.id) && d.stream_volume !== undefined && d.stream_volume !== null)
       if (targetDev && targetDev.stream_volume !== undefined && targetDev.stream_volume !== null) {
         setStreamVolume(targetDev.stream_volume)
       }
     }
-  }, [devices, selectedDeviceIds])
+  }, [devices, selectedZoneKeys])
 
   // TTS State
   const [ttsProvider, setTtsProvider] = useState<TtsProvider>('google-free')
@@ -464,22 +500,20 @@ export default function Broadcast() {
   }, [])
 
   const sendStreamVolumeCommand = async (newVol: number) => {
-    if (selectedDeviceIds.length === 0) return
+    const targets = getTargetedDevices()
+    if (targets.length === 0) return
     try {
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) return
-
       // Update database persistence
       await supabase
         .from('bell_devices')
         .update({ stream_volume: newVol })
-        .in('id', selectedDeviceIds)
+        .in('id', targets.map(t => t.device.id))
 
       // Insert command into queue for immediate sync
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: 'SET_STREAM_VOLUME',
-        payload: { volume: newVol },
+        payload: { volume: newVol, channel },
         status: 'pending'
       }))
       await supabase.from('command_queue').insert(commands)
@@ -815,24 +849,21 @@ export default function Broadcast() {
     setStatus(null)
 
     try {
-      if (selectedDeviceIds.length === 0) {
-        throw new Error('Please select at least one target bell device.')
-      }
-
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) {
-        throw new Error('No selected target devices found for stream.')
+      const targets = getTargetedDevices()
+      if (targets.length === 0) {
+        throw new Error('Please select at least one target bell zone for the stream.')
       }
 
       const cleanedUrl = cleanArchiveOrgUrl(item.url)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oopyelhldjyyoupetynq.supabase.co'
       const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(cleanedUrl)}`
 
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: 'STREAM_START',
         payload: {
           url: proxyUrl,
+          channel,
           stream_volume: streamVolume,
           bypass_other_audio: streamBypassOtherAudio,
           play_pre_announcement: playPreAnnouncementStream,
@@ -1098,20 +1129,17 @@ export default function Broadcast() {
         .from('voice-notes')
         .getPublicUrl(fileName)
 
-      if (selectedDeviceIds.length === 0) {
-        throw new Error('Please select at least one target bell device.')
+      const targets = getTargetedDevices()
+      if (targets.length === 0) {
+        throw new Error('Please select at least one target bell zone for broadcast.')
       }
 
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) {
-        throw new Error('No selected target devices found for broadcast.')
-      }
-
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: 'VOICE_NOTE',
         payload: {
           url: publicUrl,
+          channel,
           play_pre_announcement: playPreAnnouncementVoice,
           pre_announcement_url: schoolPreAnnouncementUrl || '',
           pre_announcement_delay_seconds: schoolPreAnnouncementDelay || 3
@@ -1127,7 +1155,7 @@ export default function Broadcast() {
       if (cmdError) throw cmdError
 
       // Push via Supabase Realtime broadcast channels for zero-latency execution (<100ms)
-      targetDevices.forEach(d => {
+      targets.forEach(({ device: d, channel }) => {
         if (d.mac_address) {
           const cleanMac = d.mac_address.replace(/[: -]/g, '').toUpperCase()
           const cmdRecord = (insertedCmds as Array<{ id: number; device_id: string }> | null)?.find(c => c.device_id === d.id)
@@ -1142,6 +1170,7 @@ export default function Broadcast() {
                   command: 'VOICE_NOTE',
                   payload: {
                     url: publicUrl,
+                    channel,
                     play_pre_announcement: playPreAnnouncementVoice,
                     pre_announcement_url: schoolPreAnnouncementUrl || '',
                     pre_announcement_delay_seconds: schoolPreAnnouncementDelay || 3
@@ -1231,19 +1260,18 @@ export default function Broadcast() {
         pre_announcement_delay_seconds: schoolPreAnnouncementDelay || 3
       };
 
-      if (selectedDeviceIds.length === 0) {
-        throw new Error('Please select at least one target bell device.')
+      const targets = getTargetedDevices()
+      if (targets.length === 0) {
+        throw new Error('Please select at least one target bell zone for broadcast.')
       }
 
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) {
-        throw new Error('No selected target devices found for broadcast.')
-      }
-
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: commandType,
-        payload: commandPayload,
+        payload: {
+          ...commandPayload,
+          channel
+        },
         status: 'pending'
       }))
 
@@ -1255,7 +1283,7 @@ export default function Broadcast() {
       if (cmdError) throw cmdError
 
       // Push via Supabase Realtime broadcast channels for zero-latency execution (<100ms)
-      targetDevices.forEach(d => {
+      targets.forEach(({ device: d, channel }) => {
         if (d.mac_address) {
           const cleanMac = d.mac_address.replace(/[: -]/g, '').toUpperCase()
           const cmdRecord = (insertedCmds as Array<{ id: number; device_id: string }> | null)?.find(c => c.device_id === d.id)
@@ -1268,7 +1296,10 @@ export default function Broadcast() {
                 payload: {
                   id: cmdRecord ? String(cmdRecord.id) : undefined,
                   command: commandType,
-                  payload: commandPayload
+                  payload: {
+                    ...commandPayload,
+                    channel
+                  }
                 }
               }).then(() => supabase.removeChannel(ch))
             }
@@ -1320,13 +1351,9 @@ export default function Broadcast() {
     setStatus(null)
 
     try {
-      if (selectedDeviceIds.length === 0) {
-        throw new Error('Please select at least one target bell device.')
-      }
-
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) {
-        throw new Error('No selected target devices found for stream.')
+      const targets = getTargetedDevices()
+      if (targets.length === 0) {
+        throw new Error('Please select at least one target bell zone for the stream.')
       }
 
       const normalizedUrl = normalizeStreamUrl(streamUrl)
@@ -1338,11 +1365,12 @@ export default function Broadcast() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oopyelhldjyyoupetynq.supabase.co'
       const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(normalizedUrl)}`
 
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: 'STREAM_START',
         payload: {
           url: proxyUrl,
+          channel,
           stream_volume: streamVolume,
           bypass_other_audio: streamBypassOtherAudio,
           play_pre_announcement: playPreAnnouncementStream,
@@ -1379,19 +1407,15 @@ export default function Broadcast() {
     setStatus(null)
 
     try {
-      if (selectedDeviceIds.length === 0) {
-        throw new Error('Please select at least one target bell device.')
+      const targets = getTargetedDevices()
+      if (targets.length === 0) {
+        throw new Error('Please select at least one target bell zone for the stream.')
       }
 
-      const targetDevices = devices.filter(d => selectedDeviceIds.includes(d.id))
-      if (targetDevices.length === 0) {
-        throw new Error('No selected target devices found for stream.')
-      }
-
-      const commands = targetDevices.map(d => ({
+      const commands = targets.map(({ device: d, channel }) => ({
         device_id: d.id,
         command: 'STREAM_STOP',
-        payload: {},
+        payload: { channel },
         status: 'pending'
       }))
 
@@ -1424,11 +1448,11 @@ export default function Broadcast() {
         </div>
       </div>
 
-      {/* Target Device Checkbox Selector */}
+      {/* Target Device & Zone Selector */}
       <DeviceSelector
         devices={devices}
-        selectedDeviceIds={selectedDeviceIds}
-        onChange={setSelectedDeviceIds}
+        selectedZoneKeys={selectedZoneKeys}
+        onZoneKeysChange={setSelectedZoneKeys}
         isLoading={loadingDevices}
       />
 
