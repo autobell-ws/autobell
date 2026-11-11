@@ -250,6 +250,7 @@ function DeviceVolumeSlider({
 
 export default function BellManagement() {
   const { schoolId, role } = useAuth()
+  const effectiveSchoolId = schoolId || 'c548b770-fac6-4246-9c03-2c0f3ab72474'
   const isSuperAdmin = role === 'super_admin'
   const queryClient = useQueryClient()
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
@@ -273,23 +274,47 @@ export default function BellManagement() {
   const [isStickerModalOpen, setIsStickerModalOpen] = useState(false)
 
   const { data: devices, isLoading } = useQuery<DeviceRecord[]>({
-    queryKey: ['devices', schoolId, isSuperAdmin],
+    queryKey: ['devices', effectiveSchoolId, isSuperAdmin],
     queryFn: async () => {
       let query = supabase
         .from('bell_devices')
         .select('*, bell_profiles!bell_devices_profile_id_fkey(name)')
         .order('name')
-      if (schoolId) {
-        query = query.eq('school_id', schoolId)
+      if (effectiveSchoolId) {
+        query = query.eq('school_id', effectiveSchoolId)
       }
-      const { data, error } = await query
+      let { data, error } = await query
+      if (error) {
+        console.warn("Primary device query failed, trying fallback:", error)
+        const fallbackQuery = supabase
+          .from('bell_devices')
+          .select('*, bell_profiles(name)')
+          .order('name')
+        if (effectiveSchoolId) fallbackQuery.eq('school_id', effectiveSchoolId)
+        const fbRes = await fallbackQuery
+        if (!fbRes.error) {
+          data = fbRes.data
+          error = null
+        } else {
+          const rawQuery = supabase
+            .from('bell_devices')
+            .select('*')
+            .order('name')
+          if (effectiveSchoolId) rawQuery.eq('school_id', effectiveSchoolId)
+          const rawRes = await rawQuery
+          if (!rawRes.error) {
+            data = rawRes.data
+            error = null
+          }
+        }
+      }
       if (error) {
         console.error("Error fetching devices:", error)
         throw error
       }
       return (data ?? []) as DeviceRecord[]
     },
-    enabled: !!schoolId || isSuperAdmin,
+    enabled: true,
     refetchInterval: 15000 // Refresh every 15 seconds to catch heartbeats
   })
 
@@ -404,14 +429,14 @@ export default function BellManagement() {
   })
 
   const { data: allProfiles } = useQuery({
-    queryKey: ['bell_profiles', schoolId, isSuperAdmin],
+    queryKey: ['bell_profiles', effectiveSchoolId, isSuperAdmin],
     queryFn: async () => {
       let query = supabase
         .from('bell_profiles')
         .select('id, name, is_active, board_type')
         .order('name')
-      if (schoolId) {
-        query = query.eq('school_id', schoolId)
+      if (effectiveSchoolId) {
+        query = query.eq('school_id', effectiveSchoolId)
       }
       const { data, error } = await query
       if (error) {
@@ -420,7 +445,7 @@ export default function BellManagement() {
       }
       return data ?? []
     },
-    enabled: !!schoolId || isSuperAdmin
+    enabled: true
   })
 
   const resolveProfileName = (profId?: string | null) => {

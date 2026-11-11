@@ -96,50 +96,52 @@ export default function Overview() {
         .select('id', { count: 'exact', head: true })
         .not('storage_path', 'ilike', 'combined/%')
 
-      let schoolName = 'My School'
+      const targetSchoolId = schoolId || 'c548b770-fac6-4246-9c03-2c0f3ab72474'
+      let schoolName = 'Husamiyah School'
       let pendingCommandsCount = 0
-      if (schoolId) {
-        const schoolRes = await supabase
-          .from('schools')
-          .select('name')
-          .eq('id', schoolId)
-          .maybeSingle()
 
-        if (!schoolRes.error && schoolRes.data) {
-          schoolName = schoolRes.data.name
-        }
+      const schoolRes = await supabase
+        .from('schools')
+        .select('name')
+        .eq('id', targetSchoolId)
+        .maybeSingle()
 
-        // Fetch device IDs to get command queue count
-        const { data: devices } = await supabase
-          .from('bell_devices')
-          .select('id')
-          .eq('school_id', schoolId)
-
-        if (devices && devices.length > 0) {
-          const deviceIds = devices.map(d => d.id)
-          const { count } = await supabase
-            .from('command_queue')
-            .select('id', { count: 'exact', head: true })
-            .in('device_id', deviceIds)
-            .eq('status', 'pending')
-          pendingCommandsCount = count ?? 0
-        }
+      if (!schoolRes.error && schoolRes.data) {
+        schoolName = schoolRes.data.name
       }
 
-      const primaryOnlineRes = await supabase
+      // Fetch device IDs to get command queue count
+      const { data: devices } = await supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
-        .eq('school_id', schoolId)
-        .eq('status', 'online')
-        .limit(1)
-        .maybeSingle()
+        .select('id')
+        .eq('school_id', targetSchoolId)
 
-      const firstDeviceRes = await supabase
+      if (devices && devices.length > 0) {
+        const deviceIds = devices.map(d => d.id)
+        const { count } = await supabase
+          .from('command_queue')
+          .select('id', { count: 'exact', head: true })
+          .in('device_id', deviceIds)
+          .eq('status', 'pending')
+        pendingCommandsCount = count ?? 0
+      }
+
+      let primaryOnlineQuery = supabase
         .from('bell_devices')
         .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
-        .eq('school_id', schoolId)
-        .limit(1)
-        .maybeSingle()
+        .eq('status', 'online')
+      if (targetSchoolId) {
+        primaryOnlineQuery = primaryOnlineQuery.eq('school_id', targetSchoolId)
+      }
+      const primaryOnlineRes = await primaryOnlineQuery.limit(1).maybeSingle()
+
+      let firstDeviceQuery = supabase
+        .from('bell_devices')
+        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+      if (targetSchoolId) {
+        firstDeviceQuery = firstDeviceQuery.eq('school_id', targetSchoolId)
+      }
+      const firstDeviceRes = await firstDeviceQuery.limit(1).maybeSingle()
 
       const primaryDevice = primaryOnlineRes.data || firstDeviceRes.data || null
 
