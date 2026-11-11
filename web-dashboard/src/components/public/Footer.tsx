@@ -92,11 +92,6 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/calculator" className="hover:text-teal-400 transition-colors">
-                  Lost Teaching Hours Calculator
-                </Link>
-              </li>
-              <li>
                 <Link to="/partners" className="hover:text-teal-400 transition-colors">
                   Distributor & Partner Portal
                 </Link>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/context/AuthContext'
 import { CurrencyProvider } from '@/context/CurrencyContext'
@@ -72,7 +72,7 @@ function App() {
                     <Route path="/solutions" element={<Solutions />} />
                     <Route path="/solutions/:type" element={<Solutions />} />
                     <Route path="/buy" element={<Buy />} />
-                    <Route path="/calculator" element={<CalculatorPage />} />
+                    <Route path="/calculator" element={<Navigate to="/" replace />} />
                     <Route path="/demo" element={<DemoPage />} />
                     <Route path="/partners" element={<PartnersPage />} />
                     <Route path="/about" element={<AboutContactPage />} />

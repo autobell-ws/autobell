@@ -363,3 +363,4 @@ function sanitize(val?: string | null): string {
 function escapeRegExp(string: string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+

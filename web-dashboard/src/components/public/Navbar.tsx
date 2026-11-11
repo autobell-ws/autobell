@@ -14,7 +14,6 @@ export function Navbar() {
     { name: 'Solutions', path: '/solutions' },
     { name: 'Pricing', path: '/pricing' },
     { name: 'Audio Demo', path: '/demo' },
-    { name: 'ROI Calculator', path: '/calculator' },
     { name: 'Partners', path: '/partners' },
   ]
 

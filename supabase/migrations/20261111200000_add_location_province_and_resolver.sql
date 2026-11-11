@@ -60,3 +60,4 @@ BEGIN
   WHERE id = p_device_id;
 END;
 $function$;
+
