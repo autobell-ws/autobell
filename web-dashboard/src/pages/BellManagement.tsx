@@ -78,170 +78,395 @@ function resolveDeviceStatus(status: string | null, last_heartbeat: string | nul
   return { label: 'unknown', isOnline: false }
 }
 
-function DeviceVolumeSlider({ 
-  device, 
-  onVolumeCommit 
-}: { 
-  device: DeviceRecord; 
-  onVolumeCommit: (deviceId: string, volume: number, channel?: 'left' | 'right' | 'both') => void 
+function DualZoneController({
+  device,
+  allProfiles,
+  profileBellCounts,
+  onVolumeCommit,
+  onProfileCommit,
+  onRingZone,
+  isActivated,
+  isPendingRing
+}: {
+  device: DeviceRecord
+  allProfiles?: { id: string; name: string; is_active: boolean }[]
+  profileBellCounts?: Record<string, number>
+  onVolumeCommit: (deviceId: string, volume: number, channel: 'left' | 'right' | 'both') => void
+  onProfileCommit: (deviceId: string, channel: 'left' | 'right' | 'both', profileId: string) => void
+  onRingZone: (device: DeviceRecord, channel: 'left' | 'right' | 'both') => void
+  isActivated: boolean
+  isPendingRing: boolean
 }) {
-  const isDual = device.channel_mode === 'dual_channel'
-
-  const [localMaster, setLocalMaster] = useState<number>(device.volume ?? 21)
-  const [localLeft, setLocalLeft] = useState<number>(device.volume_left ?? device.volume ?? 21)
-  const [localRight, setLocalRight] = useState<number>(device.volume_right ?? device.volume ?? 21)
+  const [localLeftVol, setLocalLeftVol] = useState<number>(device.volume_left ?? device.volume ?? 21)
+  const [localRightVol, setLocalRightVol] = useState<number>(device.volume_right ?? device.volume ?? 21)
 
   useEffect(() => {
-    setLocalMaster(device.volume ?? 21)
-    setLocalLeft(device.volume_left ?? device.volume ?? 21)
-    setLocalRight(device.volume_right ?? device.volume ?? 21)
-  }, [device.volume, device.volume_left, device.volume_right])
+    setLocalLeftVol(device.volume_left ?? device.volume ?? 21)
+    setLocalRightVol(device.volume_right ?? device.volume ?? 21)
+  }, [device.volume_left, device.volume_right, device.volume])
 
-  if (isDual) {
-    return (
-      <div className="space-y-3 p-3 rounded-xl bg-muted/40 border border-border/70">
-        <div className="flex items-center justify-between text-xs border-b border-border/50 pb-2">
-          <span className="font-semibold text-foreground flex items-center gap-1.5">
-            <Sliders className="h-3.5 w-3.5 text-primary" />
-            Independent Channel Volume
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-            Dual L / R
-          </span>
-        </div>
+  const leftProfileId = device.profile_id_left || device.profile_id || 'INHERIT'
+  const rightProfileId = device.profile_id_right || device.profile_id || 'INHERIT'
 
-        {/* Left Channel Volume Slider */}
-        <div className="space-y-1 rounded-lg bg-blue-500/[0.04] border border-blue-500/20 p-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5 truncate">
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white">L</span>
-              <span className="truncate">{device.channel_label_left || 'Left Channel'}</span>
-            </span>
-            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 shrink-0">
-              {localLeft} / 21
-            </span>
-          </div>
-          <div className="flex items-center gap-2 pt-0.5">
-            <input
-              type="range"
-              min="0"
-              max="21"
-              value={localLeft}
-              onChange={(e) => setLocalLeft(parseInt(e.target.value))}
-              onPointerUp={() => onVolumeCommit(device.id, localLeft, 'left')}
-              onKeyUp={() => onVolumeCommit(device.id, localLeft, 'left')}
-              className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-blue-500/20 accent-blue-600"
-              aria-label={`Adjust Left Channel volume for ${device.name || 'device'}`}
-            />
-            <button
-              onClick={() => {
-                const newVol = localLeft > 0 ? 0 : 21
-                setLocalLeft(newVol)
-                onVolumeCommit(device.id, newVol, 'left')
-              }}
-              className={`p-1.5 rounded-md border text-xs transition-colors shrink-0 ${
-                localLeft === 0
-                  ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-                  : 'bg-background text-foreground border-border/60 hover:bg-muted'
-              }`}
-              title={localLeft === 0 ? "Unmute Left Channel" : "Mute Left Channel"}
-            >
-              {localLeft === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
+  const activeSchoolProfile = allProfiles?.find(p => p.is_active)
+  const defaultProfileId = activeSchoolProfile?.id
 
-        {/* Right Channel Volume Slider */}
-        <div className="space-y-1 rounded-lg bg-purple-500/[0.04] border border-purple-500/20 p-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 truncate">
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-purple-600 text-[10px] font-black text-white">R</span>
-              <span className="truncate">{device.channel_label_right || 'Right Channel'}</span>
-            </span>
-            <span className="font-mono font-bold text-purple-600 dark:text-purple-400 shrink-0">
-              {localRight} / 21
-            </span>
-          </div>
-          <div className="flex items-center gap-2 pt-0.5">
-            <input
-              type="range"
-              min="0"
-              max="21"
-              value={localRight}
-              onChange={(e) => setLocalRight(parseInt(e.target.value))}
-              onPointerUp={() => onVolumeCommit(device.id, localRight, 'right')}
-              onKeyUp={() => onVolumeCommit(device.id, localRight, 'right')}
-              className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-purple-500/20 accent-purple-600"
-              aria-label={`Adjust Right Channel volume for ${device.name || 'device'}`}
-            />
-            <button
-              onClick={() => {
-                const newVol = localRight > 0 ? 0 : 21
-                setLocalRight(newVol)
-                onVolumeCommit(device.id, newVol, 'right')
-              }}
-              className={`p-1.5 rounded-md border text-xs transition-colors shrink-0 ${
-                localRight === 0
-                  ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-                  : 'bg-background text-foreground border-border/60 hover:bg-muted'
-              }`}
-              title={localRight === 0 ? "Unmute Right Channel" : "Mute Right Channel"}
-            >
-              {localRight === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const leftEffectiveProfileId = leftProfileId === 'INHERIT' ? defaultProfileId : leftProfileId
+  const rightEffectiveProfileId = rightProfileId === 'INHERIT' ? defaultProfileId : rightProfileId
 
-  // Unified Mode
+  const leftPeriodsCount = leftEffectiveProfileId ? (profileBellCounts?.[leftEffectiveProfileId] ?? 0) : 0
+  const rightPeriodsCount = rightEffectiveProfileId ? (profileBellCounts?.[rightEffectiveProfileId] ?? 0) : 0
+
   return (
-    <div className="space-y-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-semibold text-foreground flex items-center gap-1.5">
-          <Volume2 className="h-3.5 w-3.5 text-primary" />
-          Master Bell Volume
+    <div className="space-y-3 pt-1 border-t border-border/60">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+          <Split className="h-4 w-4 text-primary" />
+          PCM5102a Dual Outputs (Left & Right Zones)
         </span>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium border border-border/50">
-            Unified L+R
-          </span>
-          <span className="font-mono font-bold text-primary">
-            {localMaster} / 21
-          </span>
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+          Independent Zones
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Left Zone (PCM5102a Output 1) */}
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/[0.04] p-3 space-y-2.5 flex flex-col justify-between shadow-xs">
+          <div className="space-y-2.5">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
+              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5 truncate">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white shadow-xs">L</span>
+                <span className="truncate">{device.channel_label_left || 'Left Zone (Output 1)'}</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                Vol: {localLeftVol}/21
+              </span>
+            </div>
+
+            {/* Schedule Selector & Period Bell Count */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="font-semibold text-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-blue-500" />
+                  Period Schedule
+                </label>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold font-mono">
+                  🔔 {leftPeriodsCount} {leftPeriodsCount === 1 ? 'Period' : 'Periods'}
+                </span>
+              </div>
+              <select
+                value={leftProfileId}
+                onChange={(e) => onProfileCommit(device.id, 'left', e.target.value)}
+                className="w-full rounded-md border border-blue-500/30 bg-background px-2 py-1.5 text-xs text-foreground shadow-xs focus:border-blue-500 focus:outline-none"
+                aria-label={`Select schedule for Left Zone on ${device.name}`}
+              >
+                <option value="INHERIT">✨ Inherit School Default</option>
+                {allProfiles?.map(p => {
+                  const cnt = profileBellCounts?.[p.id] ?? 0
+                  return (
+                    <option key={p.id} value={p.id}>
+                      📋 {p.name} ({cnt} {cnt === 1 ? 'period' : 'periods'}) {p.is_active ? '★' : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+
+            {/* Volume Slider */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-medium text-muted-foreground flex items-center gap-1">
+                  <Sliders className="h-3 w-3 text-blue-500" />
+                  Zone Volume
+                </span>
+                <span className="font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                  {localLeftVol === 0 ? 'Muted' : `${localLeftVol} / 21`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="21"
+                  value={localLeftVol}
+                  onChange={(e) => setLocalLeftVol(parseInt(e.target.value))}
+                  onPointerUp={() => onVolumeCommit(device.id, localLeftVol, 'left')}
+                  onKeyUp={() => onVolumeCommit(device.id, localLeftVol, 'left')}
+                  className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-blue-500/20 accent-blue-600"
+                  aria-label={`Adjust Left Zone volume for ${device.name}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newVol = localLeftVol > 0 ? 0 : 21
+                    setLocalLeftVol(newVol)
+                    onVolumeCommit(device.id, newVol, 'left')
+                  }}
+                  className={`p-1 rounded-md border text-xs transition-colors shrink-0 ${
+                    localLeftVol === 0
+                      ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                      : 'bg-background text-foreground border-border/60 hover:bg-muted'
+                  }`}
+                  title={localLeftVol === 0 ? "Unmute Left Zone" : "Mute Left Zone"}
+                >
+                  {localLeftVol === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Ring Left Zone Test Button */}
+          <button
+            type="button"
+            onClick={() => onRingZone(device, 'left')}
+            disabled={!isActivated || isPendingRing}
+            className={`w-full inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-xs transition-all border ${
+              isActivated
+                ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-700 focus:ring-2 focus:ring-blue-500 active:scale-[0.98]'
+                : 'bg-muted text-muted-foreground border-border/50 cursor-not-allowed opacity-60'
+            }`}
+            title={isActivated ? "Test ring Left Zone immediately for 5 seconds" : "Requires active subscription"}
+          >
+            <BellRing className="mr-1.5 h-3.5 w-3.5" />
+            Ring Left Zone
+          </button>
+        </div>
+
+        {/* Right Zone (PCM5102a Output 2) */}
+        <div className="rounded-xl border border-purple-500/30 bg-purple-500/[0.04] p-3 space-y-2.5 flex flex-col justify-between shadow-xs">
+          <div className="space-y-2.5">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
+              <span className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 truncate">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 text-[10px] font-black text-white shadow-xs">R</span>
+                <span className="truncate">{device.channel_label_right || 'Right Zone (Output 2)'}</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
+                Vol: {localRightVol}/21
+              </span>
+            </div>
+
+            {/* Schedule Selector & Period Bell Count */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="font-semibold text-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-purple-500" />
+                  Period Schedule
+                </label>
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold font-mono">
+                  🔔 {rightPeriodsCount} {rightPeriodsCount === 1 ? 'Period' : 'Periods'}
+                </span>
+              </div>
+              <select
+                value={rightProfileId}
+                onChange={(e) => onProfileCommit(device.id, 'right', e.target.value)}
+                className="w-full rounded-md border border-purple-500/30 bg-background px-2 py-1.5 text-xs text-foreground shadow-xs focus:border-purple-500 focus:outline-none"
+                aria-label={`Select schedule for Right Zone on ${device.name}`}
+              >
+                <option value="INHERIT">✨ Inherit School Default</option>
+                {allProfiles?.map(p => {
+                  const cnt = profileBellCounts?.[p.id] ?? 0
+                  return (
+                    <option key={p.id} value={p.id}>
+                      📋 {p.name} ({cnt} {cnt === 1 ? 'period' : 'periods'}) {p.is_active ? '★' : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+
+            {/* Volume Slider */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-medium text-muted-foreground flex items-center gap-1">
+                  <Sliders className="h-3 w-3 text-purple-500" />
+                  Zone Volume
+                </span>
+                <span className="font-mono text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                  {localRightVol === 0 ? 'Muted' : `${localRightVol} / 21`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="21"
+                  value={localRightVol}
+                  onChange={(e) => setLocalRightVol(parseInt(e.target.value))}
+                  onPointerUp={() => onVolumeCommit(device.id, localRightVol, 'right')}
+                  onKeyUp={() => onVolumeCommit(device.id, localRightVol, 'right')}
+                  className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-purple-500/20 accent-purple-600"
+                  aria-label={`Adjust Right Zone volume for ${device.name}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newVol = localRightVol > 0 ? 0 : 21
+                    setLocalRightVol(newVol)
+                    onVolumeCommit(device.id, newVol, 'right')
+                  }}
+                  className={`p-1 rounded-md border text-xs transition-colors shrink-0 ${
+                    localRightVol === 0
+                      ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                      : 'bg-background text-foreground border-border/60 hover:bg-muted'
+                  }`}
+                  title={localRightVol === 0 ? "Unmute Right Zone" : "Mute Right Zone"}
+                >
+                  {localRightVol === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Ring Right Zone Test Button */}
+          <button
+            type="button"
+            onClick={() => onRingZone(device, 'right')}
+            disabled={!isActivated || isPendingRing}
+            className={`w-full inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-xs transition-all border ${
+              isActivated
+                ? 'bg-purple-600 text-white hover:bg-purple-700 border-purple-700 focus:ring-2 focus:ring-purple-500 active:scale-[0.98]'
+                : 'bg-muted text-muted-foreground border-border/50 cursor-not-allowed opacity-60'
+            }`}
+            title={isActivated ? "Test ring Right Zone immediately for 5 seconds" : "Requires active subscription"}
+          >
+            <BellRing className="mr-1.5 h-3.5 w-3.5" />
+            Ring Right Zone
+          </button>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="range"
-          min="0"
-          max="21"
-          value={localMaster}
-          onChange={(e) => setLocalMaster(parseInt(e.target.value))}
-          onPointerUp={() => onVolumeCommit(device.id, localMaster, 'both')}
-          onKeyUp={() => onVolumeCommit(device.id, localMaster, 'both')}
-          className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-primary/20 accent-primary"
-          aria-label={`Adjust volume for ${device.name || 'device'}`}
-        />
+    </div>
+  )
+}
+
+function UnifiedZoneController({
+  device,
+  allProfiles,
+  profileBellCounts,
+  onVolumeCommit,
+  onProfileCommit,
+  onRingZone,
+  isActivated,
+  isPendingRing
+}: {
+  device: DeviceRecord
+  allProfiles?: { id: string; name: string; is_active: boolean }[]
+  profileBellCounts?: Record<string, number>
+  onVolumeCommit: (deviceId: string, volume: number, channel: 'left' | 'right' | 'both') => void
+  onProfileCommit: (deviceId: string, channel: 'left' | 'right' | 'both', profileId: string) => void
+  onRingZone: (device: DeviceRecord, channel: 'left' | 'right' | 'both') => void
+  isActivated: boolean
+  isPendingRing: boolean
+}) {
+  const [localVol, setLocalVol] = useState<number>(device.volume ?? 21)
+
+  useEffect(() => {
+    setLocalVol(device.volume ?? 21)
+  }, [device.volume])
+
+  const profileId = device.profile_id || 'INHERIT'
+  const activeSchoolProfile = allProfiles?.find(p => p.is_active)
+  const effectiveProfileId = profileId === 'INHERIT' ? activeSchoolProfile?.id : profileId
+  const periodsCount = effectiveProfileId ? (profileBellCounts?.[effectiveProfileId] ?? 0) : 0
+
+  return (
+    <div className="space-y-3 pt-1 border-t border-border/60">
+      <div className="rounded-xl border border-primary/25 bg-primary/[0.03] p-3.5 space-y-3">
+        <div className="flex items-center justify-between border-b border-border/50 pb-2">
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Radio className="h-4 w-4 text-primary" />
+            Unified Stereo Output (Left + Right Master)
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+            L+R Stereo
+          </span>
+        </div>
+
+        {/* Schedule Selector */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <label className="font-semibold text-foreground flex items-center gap-1">
+              <Calendar className="h-3 w-3 text-primary" />
+              Period Schedule (Both Channels)
+            </label>
+            <span className="text-[10px] text-primary font-semibold font-mono">
+              🔔 {periodsCount} {periodsCount === 1 ? 'Period' : 'Periods'}
+            </span>
+          </div>
+          <select
+            value={profileId}
+            onChange={(e) => onProfileCommit(device.id, 'both', e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground shadow-xs focus:border-primary focus:outline-none"
+            aria-label={`Select schedule for ${device.name}`}
+          >
+            <option value="INHERIT">✨ Inherit School Default</option>
+            {allProfiles?.map(p => {
+              const cnt = profileBellCounts?.[p.id] ?? 0
+              return (
+                <option key={p.id} value={p.id}>
+                  📋 {p.name} ({cnt} {cnt === 1 ? 'period' : 'periods'}) {p.is_active ? '★' : ''}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+
+        {/* Master Volume */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-medium text-muted-foreground flex items-center gap-1">
+              <Sliders className="h-3 w-3 text-primary" />
+              Master Volume
+            </span>
+            <span className="font-mono text-[10px] font-bold text-primary">
+              {localVol === 0 ? 'Muted' : `${localVol} / 21`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min="0"
+              max="21"
+              value={localVol}
+              onChange={(e) => setLocalVol(parseInt(e.target.value))}
+              onPointerUp={() => onVolumeCommit(device.id, localVol, 'both')}
+              onKeyUp={() => onVolumeCommit(device.id, localVol, 'both')}
+              className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-primary/20 accent-primary"
+              aria-label={`Adjust master volume for ${device.name}`}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const newVol = localVol > 0 ? 0 : 21
+                setLocalVol(newVol)
+                onVolumeCommit(device.id, newVol, 'both')
+              }}
+              className={`p-1.5 rounded-md border text-xs transition-colors shrink-0 ${
+                localVol === 0
+                  ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                  : 'bg-background text-foreground border-border/60 hover:bg-muted'
+              }`}
+              title={localVol === 0 ? "Unmute master bell" : "Mute master bell"}
+            >
+              {localVol === 0 ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5 text-primary" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Ring Button */}
         <button
-          onClick={() => {
-            const newVol = localMaster > 0 ? 0 : 21
-            setLocalMaster(newVol)
-            onVolumeCommit(device.id, newVol, 'both')
-          }}
-          className={`p-1.5 rounded-md border transition-colors ${
-            localMaster === 0
-              ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-              : 'bg-muted text-foreground border-border/50 hover:bg-muted/80'
+          type="button"
+          onClick={() => onRingZone(device, 'both')}
+          disabled={!isActivated || isPendingRing}
+          className={`w-full inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold shadow-xs transition-all ${
+            isActivated
+              ? 'bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-2 focus:ring-primary'
+              : 'bg-muted text-muted-foreground border border-border/50 cursor-not-allowed opacity-60'
           }`}
-          title={localMaster === 0 ? "Unmute bell" : "Mute bell"}
         >
-          {localMaster === 0 ? (
-            <VolumeX className="h-3.5 w-3.5" />
-          ) : (
-            <Volume2 className="h-3.5 w-3.5" />
-          )}
+          <BellRing className="mr-1.5 h-3.5 w-3.5" />
+          Test Ring Bell (Unified L+R)
         </button>
       </div>
     </div>
@@ -316,6 +541,48 @@ export default function BellManagement() {
     },
     enabled: true,
     refetchInterval: 15000 // Refresh every 15 seconds to catch heartbeats
+  })
+
+  const { data: allProfiles } = useQuery({
+    queryKey: ['bell_profiles', effectiveSchoolId, isSuperAdmin],
+    queryFn: async () => {
+      let query = supabase
+        .from('bell_profiles')
+        .select('id, name, is_active, board_type')
+        .order('name')
+      if (effectiveSchoolId) {
+        query = query.eq('school_id', effectiveSchoolId)
+      }
+      const { data, error } = await query
+      if (error) {
+        console.error('Error fetching bell profiles:', error)
+        return []
+      }
+      return data ?? []
+    },
+    enabled: true
+  })
+
+  // Count bell times (periods) per profile for immediate display
+  const { data: profileBellCounts } = useQuery<Record<string, number>>({
+    queryKey: ['profile_bell_counts', effectiveSchoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bell_times')
+        .select('profile_id')
+      if (error) {
+        console.warn('Error fetching bell times counts:', error)
+        return {}
+      }
+      const counts: Record<string, number> = {}
+      data?.forEach((bt: { profile_id: string }) => {
+        if (bt.profile_id) {
+          counts[bt.profile_id] = (counts[bt.profile_id] || 0) + 1
+        }
+      })
+      return counts
+    },
+    enabled: true
   })
 
   const registerDeviceMutation = useMutation({
@@ -414,7 +681,8 @@ export default function BellManagement() {
       }
     },
     onSuccess: (_, variables) => {
-      setNotification({ type: 'success', message: `Command ${variables.command} sent successfully!` })
+      const chDesc = variables.payload?.channel === 'left' ? 'Left Zone' : variables.payload?.channel === 'right' ? 'Right Zone' : 'Both Zones'
+      setNotification({ type: 'success', message: `Command ${variables.command} (${chDesc}) sent successfully!` })
       setTimeout(() => setNotification(null), 3000)
     },
     onError: (error) => {
@@ -427,35 +695,6 @@ export default function BellManagement() {
       setTimeout(() => setNotification(null), 3000)
     }
   })
-
-  const { data: allProfiles } = useQuery({
-    queryKey: ['bell_profiles', effectiveSchoolId, isSuperAdmin],
-    queryFn: async () => {
-      let query = supabase
-        .from('bell_profiles')
-        .select('id, name, is_active, board_type')
-        .order('name')
-      if (effectiveSchoolId) {
-        query = query.eq('school_id', effectiveSchoolId)
-      }
-      const { data, error } = await query
-      if (error) {
-        console.error('Error fetching bell profiles:', error)
-        return []
-      }
-      return data ?? []
-    },
-    enabled: true
-  })
-
-  const resolveProfileName = (profId?: string | null) => {
-    if (!profId || profId === 'INHERIT') {
-      const activeProf = allProfiles?.find(p => p.is_active)
-      return activeProf ? `${activeProf.name} (Default)` : 'School Default Profile'
-    }
-    const found = allProfiles?.find(p => p.id === profId)
-    return found ? found.name : 'Custom Profile'
-  }
 
   const updateVolumeMutation = useMutation({
     mutationFn: async ({ 
@@ -504,13 +743,72 @@ export default function BellManagement() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
-      const chLabel = variables.channel === 'left' ? 'Left Channel' : variables.channel === 'right' ? 'Right Channel' : 'Master'
+      const chLabel = variables.channel === 'left' ? 'Left Zone' : variables.channel === 'right' ? 'Right Zone' : 'Master'
       setNotification({ type: 'success', message: `${chLabel} volume set to ${variables.volume}/21.` })
       setTimeout(() => setNotification(null), 3000)
     },
     onError: (error) => {
       console.error('Error updating volume:', error)
       setNotification({ type: 'error', message: 'Failed to update volume. Please try again.' })
+      setTimeout(() => setNotification(null), 3000)
+    }
+  })
+
+  const updateZoneProfileMutation = useMutation({
+    mutationFn: async ({
+      deviceId,
+      channel,
+      profileId
+    }: {
+      deviceId: string
+      channel: 'left' | 'right' | 'both'
+      profileId: string
+    }) => {
+      if (!schoolId && !isSuperAdmin) throw new Error('No school ID found')
+
+      const targetProfId = profileId === 'INHERIT' ? null : profileId
+      const updateData: any = {}
+
+      if (channel === 'left') {
+        updateData.profile_id_left = targetProfId
+      } else if (channel === 'right') {
+        updateData.profile_id_right = targetProfId
+      } else {
+        updateData.profile_id = targetProfId
+        updateData.profile_id_left = targetProfId
+        updateData.profile_id_right = targetProfId
+      }
+
+      const { error: dbError } = await supabase
+        .from('bell_devices')
+        .update(updateData)
+        .eq('id', deviceId)
+
+      if (dbError) throw dbError
+
+      const { error: cmdError } = await supabase.from('command_queue').insert({
+        device_id: deviceId,
+        command: 'SYNC_SCHEDULES',
+        payload: {
+          source: 'zone_profile_select',
+          channel,
+          profile_id: targetProfId,
+          profile_id_left: updateData.profile_id_left,
+          profile_id_right: updateData.profile_id_right
+        }
+      })
+
+      if (cmdError) throw cmdError
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] })
+      const chLabel = variables.channel === 'left' ? 'Left Zone' : variables.channel === 'right' ? 'Right Zone' : 'Both Zones'
+      setNotification({ type: 'success', message: `${chLabel} schedule updated & synced to AutoBell!` })
+      setTimeout(() => setNotification(null), 3500)
+    },
+    onError: (error) => {
+      console.error('Error updating zone profile:', error)
+      setNotification({ type: 'error', message: 'Failed to update schedule profile.' })
       setTimeout(() => setNotification(null), 3000)
     }
   })
@@ -536,7 +834,7 @@ export default function BellManagement() {
       setNotification({ 
         type: 'success', 
         message: newMode === 'dual_channel' 
-          ? 'Switched to Dual Independent Zones (Left & Right)! You can now run different schedules and volumes per channel.' 
+          ? 'Switched to Dual Independent Zones (Left & Right)! You can now control schedules and volumes per zone.' 
           : 'Switched to Unified Stereo mode.' 
       })
       setTimeout(() => setNotification(null), 4000)
@@ -547,6 +845,35 @@ export default function BellManagement() {
       setTimeout(() => setNotification(null), 3000)
     }
   })
+
+  const handleRingZone = (device: DeviceRecord, channel: 'left' | 'right' | 'both') => {
+    const actStatus = device.activation_status || 'pending_activation'
+    const isExpired = device.subscription_end_date ? new Date(device.subscription_end_date).getTime() < Date.now() : false
+    const isActivated = actStatus === 'active' && !isExpired
+
+    if (!isActivated) {
+      alert('This device is not yet activated. Please contact support or submit payment details to activate your 1-year free license.')
+      return
+    }
+
+    const chLabel = channel === 'left'
+      ? (device.channel_label_left || 'Left Zone (Output 1)')
+      : channel === 'right'
+      ? (device.channel_label_right || 'Right Zone (Output 2)')
+      : 'Both Zones'
+
+    const confirmed = window.confirm(`Test ring ${chLabel} on "${device.name || 'AutoBell'}" immediately for 5 seconds?`)
+    if (!confirmed) return
+
+    sendCommandMutation.mutate({
+      deviceId: device.id,
+      command: 'RING',
+      payload: {
+        duration: 5,
+        channel
+      }
+    })
+  }
 
   if (isLoading) {
     return (
@@ -569,7 +896,7 @@ export default function BellManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Bell Management</h2>
-          <p className="text-xs text-muted-foreground">Manage school bell hardware, 1-Year Free cloud subscriptions, and custom schedule profiles.</p>
+          <p className="text-xs text-muted-foreground">Manage school bell hardware, PCM5102a dual-channel speaker zones, and custom period schedules.</p>
         </div>
         <button 
           onClick={() => setIsRegisterModalOpen(true)}
@@ -604,14 +931,10 @@ export default function BellManagement() {
           </button>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
           {devices.map((device) => {
             const statusInfo = resolveDeviceStatus(device.status, device.last_heartbeat)
             const isDual = device.channel_mode === 'dual_channel' && device.board_type !== 'ESP32-C3 Mini'
-            const profileName = resolveProfileName(device.profile_id)
-            const leftProfileName = resolveProfileName(device.profile_id_left || device.profile_id)
-            const rightProfileName = resolveProfileName(device.profile_id_right || device.profile_id)
-            const isCustomProfile = !!device.profile_id || (isDual && (!!device.profile_id_left || !!device.profile_id_right))
             const hasCustomChime = device.pre_announcement_id !== null || device.pre_announcement_enabled !== null
 
             const actStatus = device.activation_status || 'pending_activation'
@@ -631,7 +954,7 @@ export default function BellManagement() {
                     <div className="text-base font-semibold text-foreground truncate flex items-center gap-2" title={device.name || 'Unnamed Device'}>
                       <span>{device.name || 'Unnamed Device'}</span>
                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold shrink-0">
-                        {device.board_type === 'ESP32-C3 Mini' ? 'Compact' : 'Standard'}
+                        {device.board_type === 'ESP32-C3 Mini' ? 'Compact' : 'Standard Dual-Zone'}
                       </span>
                     </div>
                     <div className="text-xs font-mono text-muted-foreground truncate" title={device.id}>
@@ -729,110 +1052,56 @@ export default function BellManagement() {
                   </div>
                 )}
 
-                {/* Audio Output Channels & Schedule Display */}
-                {isDual ? (
-                  <div className="space-y-2 pt-1 border-t border-border/50">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
-                        <Split className="h-3.5 w-3.5 text-primary" />
-                        Dual Channels (Left & Right)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleChannelModeMutation.mutate({ deviceId: device.id, currentMode: device.channel_mode })}
-                        className="text-[10px] font-medium text-primary hover:underline flex items-center gap-1"
-                        title="Switch back to Unified Stereo Mode"
-                      >
-                        <Radio className="h-3 w-3" />
-                        Make Unified
-                      </button>
+                {/* Device Hardware Spec & Quick Toggle */}
+                {device.board_type !== 'ESP32-C3 Mini' && (
+                  <div className="flex items-center justify-between text-xs px-2 py-1 rounded-md bg-muted/30 border border-border/40">
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <HardDrive className="h-3 w-3 text-emerald-500" />
+                      <span>PCM5102a DAC Outputs: <b>Stereo Left & Right</b></span>
                     </div>
-
-                    {/* Left Channel Output Badge */}
-                    <div className="rounded-lg border border-blue-500/25 bg-blue-500/[0.04] p-2 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1 truncate">
-                          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white shrink-0">L</span>
-                          <span className="truncate">{device.channel_label_left || 'Left Channel'}</span>
-                        </span>
-                        <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 shrink-0">
-                          Vol: {device.volume_left ?? device.volume ?? 21}/21
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
-                        <Calendar className="h-3 w-3 text-blue-500 shrink-0" />
-                        <span className="truncate">Schedule: <b className="text-foreground">{leftProfileName}</b></span>
-                      </div>
-                    </div>
-
-                    {/* Right Channel Output Badge */}
-                    <div className="rounded-lg border border-purple-500/25 bg-purple-500/[0.04] p-2 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1 truncate">
-                          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-purple-600 text-[9px] font-black text-white shrink-0">R</span>
-                          <span className="truncate">{device.channel_label_right || 'Right Channel'}</span>
-                        </span>
-                        <span className="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400 shrink-0">
-                          Vol: {device.volume_right ?? device.volume ?? 21}/21
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
-                        <Calendar className="h-3 w-3 text-purple-500 shrink-0" />
-                        <span className="truncate">Schedule: <b className="text-foreground">{rightProfileName}</b></span>
-                      </div>
-                    </div>
-
-                    {/* Hardware Offline Audio Badge */}
-                    <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                      <HardDrive className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                      <span className="truncate">Hardware Offline Audio: Synced</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5 pt-1 border-t border-border/50">
-                    <div className="flex items-center justify-between gap-1">
-                      <div className={`flex-1 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md truncate ${
-                        isCustomProfile 
-                          ? 'bg-primary/10 text-primary border border-primary/20' 
-                          : 'bg-muted text-muted-foreground'
-                      }`}>
-                        <Calendar className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">Schedule: {profileName} (L+R)</span>
-                      </div>
-                      {device.board_type !== 'ESP32-C3 Mini' && (
-                        <button
-                          type="button"
-                          onClick={() => toggleChannelModeMutation.mutate({ deviceId: device.id, currentMode: device.channel_mode })}
-                          className="text-[10px] font-medium text-primary hover:underline flex items-center gap-1 px-1.5 py-0.5 rounded border border-primary/20 hover:bg-primary/10 shrink-0"
-                          title="Split into independent Left and Right speaker channels"
-                        >
-                          <Split className="h-3 w-3" />
-                          Split L/R
-                        </button>
-                      )}
-                    </div>
-
-                    {device.board_type !== 'ESP32-C3 Mini' && (
-                      <>
-                        <div className={`flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md ${
-                          hasCustomChime 
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20' 
-                            : 'text-muted-foreground'
-                        }`}>
-                          <BellRing className="h-3 w-3 shrink-0" />
-                          <span className="truncate">
-                            Chime: {hasCustomChime ? 'Custom Override' : 'School Default'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                          <HardDrive className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                          <span className="truncate">Hardware Offline Audio: Synced</span>
-                        </div>
-                      </>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleChannelModeMutation.mutate({ deviceId: device.id, currentMode: device.channel_mode })}
+                      className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-1 px-1.5 py-0.5 rounded border border-primary/20 hover:bg-primary/10"
+                      title={isDual ? "Switch to Unified Stereo Mode" : "Split into independent Left and Right speaker zones"}
+                    >
+                      {isDual ? <Radio className="h-3 w-3" /> : <Split className="h-3 w-3" />}
+                      {isDual ? 'Make Unified L+R' : 'Split into Dual Zones'}
+                    </button>
                   </div>
                 )}
 
+                {/* Primary Dual Zones Controller */}
+                {device.board_type === 'ESP32-C3 Mini' ? (
+                  <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-primary font-medium flex items-center gap-2 select-none">
+                    <Bell className="h-4 w-4 shrink-0 text-primary animate-pulse" />
+                    <span>Relay Bell: Physical 5V switching output is enabled for mechanical gong.</span>
+                  </div>
+                ) : isDual ? (
+                  <DualZoneController
+                    device={device}
+                    allProfiles={allProfiles}
+                    profileBellCounts={profileBellCounts}
+                    onVolumeCommit={(devId, vol, ch) => updateVolumeMutation.mutate({ deviceId: devId, volume: vol, channel: ch })}
+                    onProfileCommit={(devId, ch, profId) => updateZoneProfileMutation.mutate({ deviceId: devId, channel: ch, profileId: profId })}
+                    onRingZone={handleRingZone}
+                    isActivated={isActivated}
+                    isPendingRing={sendCommandMutation.isPending}
+                  />
+                ) : (
+                  <UnifiedZoneController
+                    device={device}
+                    allProfiles={allProfiles}
+                    profileBellCounts={profileBellCounts}
+                    onVolumeCommit={(devId, vol, ch) => updateVolumeMutation.mutate({ deviceId: devId, volume: vol, channel: ch })}
+                    onProfileCommit={(devId, ch, profId) => updateZoneProfileMutation.mutate({ deviceId: devId, channel: ch, profileId: profId })}
+                    onRingZone={handleRingZone}
+                    isActivated={isActivated}
+                    isPendingRing={sendCommandMutation.isPending}
+                  />
+                )}
+
+                {/* Hardware Info / Diagnostics Footer */}
                 <div className="text-xs text-muted-foreground space-y-1 bg-muted/40 p-3 rounded-lg border border-border/40">
                   <div className="truncate"><strong>MAC:</strong> {device.mac_address || 'N/A'}</div>
                   <div><strong>Last seen:</strong> {device.last_heartbeat ? new Date(device.last_heartbeat).toLocaleString() : 'Never'}</div>
@@ -855,51 +1124,31 @@ export default function BellManagement() {
                     })()}
                   </div>
                 </div>
-
-                {/* Inline Quick Volume Control */}
-                {device.board_type === 'ESP32-C3 Mini' ? (
-                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary font-medium flex items-center gap-2 select-none">
-                    <Bell className="h-4 w-4 shrink-0 text-primary animate-pulse" />
-                    <span>Relay Bell: Physical 5V switching output is enabled.</span>
-                  </div>
-                ) : (
-                  <DeviceVolumeSlider 
-                    device={device} 
-                    onVolumeCommit={(devId, vol, ch) => updateVolumeMutation.mutate({ deviceId: devId, volume: vol, channel: ch })} 
-                  />
-                )}
               </div>
 
+              {/* Master Actions Bar */}
               <div className="mt-4 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={() => {
-                      if (!isActivated) {
-                        alert('This device is not yet activated. Please contact support or submit payment details to activate your 1-year free license.')
-                        return
-                      }
-                      const confirmed = window.confirm(`Ring bell on "${device.name || 'this device'}" immediately for 5 seconds?`)
-                      if (!confirmed) return
-                      sendCommandMutation.mutate({ deviceId: device.id, command: 'RING', payload: { duration: 5 } })
-                    }}
-                    className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                    onClick={() => handleRingZone(device, 'both')}
+                    className={`inline-flex items-center justify-center rounded-lg px-2.5 py-2 text-xs font-semibold shadow-xs transition-all focus:outline-none focus:ring-2 ${
                       isActivated 
-                        ? 'bg-amber-500 text-white hover:bg-amber-600 focus:ring-amber-500' 
+                        ? 'bg-amber-500 text-white hover:bg-amber-600 focus:ring-amber-500 active:scale-[0.98]' 
                         : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
                     }`}
                     disabled={sendCommandMutation.isPending || !isActivated}
-                    aria-label={`Ring ${device.name || 'device'} now`}
-                    title={isActivated ? "Ring bell now" : "Requires active product subscription"}
+                    aria-label={`Ring both zones on ${device.name || 'device'} now`}
+                    title={isActivated ? "Ring both Left and Right speaker zones simultaneously" : "Requires active product subscription"}
                   >
                     <BellRing className="mr-1.5 h-4 w-4" />
-                    Ring Bell
+                    Ring Both Zones
                   </button>
                   <button
                     onClick={() => {
                       setSelectedDevice(device)
                       setIsSettingsModalOpen(true)
                     }}
-                    className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-3 py-2 text-xs font-medium hover:bg-primary/90 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-2.5 py-2 text-xs font-medium hover:bg-primary/90 shadow-xs transition-all focus:outline-none focus:ring-2 focus:ring-primary"
                     aria-label={`Open settings for ${device.name || 'device'}`}
                   >
                     <Settings className="mr-1.5 h-4 w-4" />
@@ -915,17 +1164,18 @@ export default function BellManagement() {
                       })
                       setIsStickerModalOpen(true)
                     }}
-                    className="inline-flex items-center justify-center rounded-lg bg-secondary text-secondary-foreground border border-border px-2.5 py-2 text-xs font-medium hover:bg-secondary/80 shadow-sm transition-all"
+                    className="inline-flex items-center justify-center rounded-lg bg-secondary text-secondary-foreground border border-border px-2 py-2 text-xs font-medium hover:bg-secondary/80 shadow-xs transition-all"
                     title="Print Controller Back Sticker"
                   >
                     <Printer className="mr-1 h-3.5 w-3.5 text-primary" />
                     Sticker
                   </button>
                 </div>
+
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => sendCommandMutation.mutate({ deviceId: device.id, command: 'CONFIG' })}
-                    className="inline-flex items-center justify-center rounded-lg bg-muted px-2 py-2 text-xs font-medium text-foreground hover:bg-muted/80 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="inline-flex items-center justify-center rounded-lg bg-muted px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted/80 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-ring"
                     disabled={sendCommandMutation.isPending}
                     aria-label={`Sync configuration for ${device.name || 'device'}`}
                   >
@@ -938,11 +1188,11 @@ export default function BellManagement() {
                         alert('Buzzer test requires an active product subscription.')
                         return
                       }
-                      const confirmed = window.confirm('Run a buzzer test on this device? This will briefly ring the buzzer at its location.')
+                      const confirmed = window.confirm('Run a buzzer test on this device? This will briefly ring the onboard piezo buzzer.')
                       if (!confirmed) return
                       sendCommandMutation.mutate({ deviceId: device.id, command: 'TEST_BUZZER' })
                     }}
-                    className="inline-flex items-center justify-center rounded-lg bg-amber-500/15 px-2 py-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/25 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="inline-flex items-center justify-center rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/25 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-500"
                     disabled={sendCommandMutation.isPending || !isActivated}
                     aria-label={`Test buzzer on ${device.name || 'device'}`}
                   >
@@ -955,7 +1205,7 @@ export default function BellManagement() {
                       if (!confirmed) return
                       sendCommandMutation.mutate({ deviceId: device.id, command: 'REBOOT' })
                     }}
-                    className="inline-flex items-center justify-center rounded-lg bg-destructive/10 px-2 py-2 text-xs font-medium text-destructive dark:text-red-400 hover:bg-destructive/20 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-destructive"
+                    className="inline-flex items-center justify-center rounded-lg bg-destructive/10 px-2 py-1.5 text-xs font-medium text-destructive dark:text-red-400 hover:bg-destructive/20 disabled:opacity-50 transition-all focus:outline-none focus:ring-2 focus:ring-destructive"
                     disabled={sendCommandMutation.isPending}
                     aria-label={`Reboot ${device.name || 'device'}`}
                   >
@@ -969,13 +1219,13 @@ export default function BellManagement() {
           })}
         </div>
       )}
-      
-      <DeviceRegistrationModal 
+
+      {/* Modals */}
+      <DeviceRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
-        onRegister={async (data) => {
-          await registerDeviceMutation.mutateAsync(data)
-        }}
+        onSubmit={(newDevice) => registerDeviceMutation.mutate(newDevice)}
+        isLoading={registerDeviceMutation.isPending}
       />
 
       <DeviceSettingsModal
@@ -992,94 +1242,93 @@ export default function BellManagement() {
         }}
       />
 
-      {/* Customer Payment Slip / Reference Submission Modal */}
+      {selectedStickerDevice && (
+        <DeviceStickerModal
+          isOpen={isStickerModalOpen}
+          onClose={() => {
+            setIsStickerModalOpen(false)
+            setSelectedStickerDevice(null)
+          }}
+          serialNumber={selectedStickerDevice.serialNumber}
+          macAddress={selectedStickerDevice.macAddress}
+          claimPin={selectedStickerDevice.claimPin}
+          modelName={selectedStickerDevice.modelName}
+          schoolName={selectedStickerDevice.schoolName}
+        />
+      )}
+
+      {/* Manual Payment Slip Submission Modal */}
       {deviceForSlip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-xl bg-card text-foreground p-6 shadow-2xl border border-border space-y-4 animate-in fade-in zoom-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-bold text-foreground">Submit Activation Reference</h3>
+              <div className="flex items-center gap-2 text-foreground font-bold text-base">
+                <FileText className="h-5 w-5 text-amber-500" />
+                <span>Submit Activation Request</span>
               </div>
-              <button
-                onClick={() => setDeviceForSlip(null)}
-                className="text-muted-foreground hover:text-foreground text-sm font-semibold"
-              >
+              <button onClick={() => setDeviceForSlip(null)} className="text-muted-foreground hover:text-foreground text-sm">
                 ✕
               </button>
             </div>
-
             <p className="text-xs text-muted-foreground leading-relaxed">
-              If you purchased this AutoBell from a shop, reseller, or bank deposit, provide your receipt/transaction ID below so we can verify and activate your 1-Year Free subscription.
+              If you purchased this AutoBell through a distributor or direct transfer, enter your transaction ID or reference below. Our onboarding team activates 1-Year Free licenses within 15 minutes.
             </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!slipPaymentRef.trim()) return
-                submitSlipMutation.mutate({
-                  deviceId: deviceForSlip.id,
-                  paymentRef: slipPaymentRef.trim(),
-                  notes: slipNotes.trim()
-                })
-              }}
-              className="space-y-3"
-            >
+            <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  Payment Slip # / Order ID / Invoice Ref *
-                </label>
+                <label className="text-xs font-semibold text-foreground">Device Name & MAC</label>
                 <input
                   type="text"
-                  required
+                  disabled
+                  value={`${deviceForSlip.name || 'AutoBell'} (${deviceForSlip.mac_address || 'N/A'})`}
+                  className="w-full mt-1 rounded-lg border border-input bg-muted px-3 py-2 text-xs text-muted-foreground"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground">Payment / Invoice Reference</label>
+                <input
+                  type="text"
                   value={slipPaymentRef}
                   onChange={(e) => setSlipPaymentRef(e.target.value)}
-                  placeholder="e.g. INV-10492, Bank Deposit Slip #4491, Cash Receipt"
-                  className="w-full rounded-md border border-input bg-background p-2 text-sm shadow-sm focus:border-primary focus:ring-primary text-foreground"
+                  placeholder="e.g. Bank Ref #, Receipt #, or EasyPaisa TID"
+                  className="w-full mt-1 rounded-lg border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary"
                 />
               </div>
-
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  Notes / Reseller Name (Optional)
-                </label>
-                <input
-                  type="text"
+                <label className="text-xs font-semibold text-foreground">Notes / Comments (Optional)</label>
+                <textarea
+                  rows={2}
                   value={slipNotes}
                   onChange={(e) => setSlipNotes(e.target.value)}
-                  placeholder="e.g. Purchased from Lahore Reseller, Paid 25,000 PKR"
-                  className="w-full rounded-md border border-input bg-background p-2 text-sm shadow-sm focus:border-primary focus:ring-primary text-foreground"
+                  placeholder="e.g. Paid via Alfalah transfer today at 10 AM"
+                  className="w-full mt-1 rounded-lg border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setDeviceForSlip(null)}
-                  className="rounded-md border border-input bg-background px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitSlipMutation.isPending || !slipPaymentRef.trim()}
-                  className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
-                >
-                  {submitSlipMutation.isPending ? 'Submitting...' : 'Submit Reference'}
-                </button>
-              </div>
-            </form>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                onClick={() => setDeviceForSlip(null)}
+                className="px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!slipPaymentRef.trim() || submitSlipMutation.isPending}
+                onClick={() => {
+                  if (!slipPaymentRef.trim()) return
+                  submitSlipMutation.mutate({
+                    deviceId: deviceForSlip.id,
+                    paymentRef: slipPaymentRef.trim(),
+                    notes: slipNotes.trim()
+                  })
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm"
+              >
+                {submitSlipMutation.isPending ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Device Back Sticker Modal */}
-      <DeviceStickerModal
-        isOpen={isStickerModalOpen}
-        onClose={() => setIsStickerModalOpen(false)}
-        device={selectedStickerDevice}
-      />
     </div>
   )
 }
-

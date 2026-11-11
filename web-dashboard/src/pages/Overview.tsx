@@ -128,7 +128,7 @@ export default function Overview() {
 
       let primaryOnlineQuery = supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
         .eq('status', 'online')
       if (targetSchoolId) {
         primaryOnlineQuery = primaryOnlineQuery.eq('school_id', targetSchoolId)
@@ -137,7 +137,7 @@ export default function Overview() {
 
       let firstDeviceQuery = supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
       if (targetSchoolId) {
         firstDeviceQuery = firstDeviceQuery.eq('school_id', targetSchoolId)
       }
@@ -263,12 +263,25 @@ export default function Overview() {
                    </p>
                  </div>
                  <div>
-                   <p className="text-emerald-100 text-xs uppercase tracking-wider">Volume</p>
-                   <p className="text-white/90">
-                     {stats.primaryDevice.volume !== null && stats.primaryDevice.volume !== undefined
-                       ? `${stats.primaryDevice.volume}/21`
-                       : 'N/A'}
+                   <p className="text-emerald-100 text-xs uppercase tracking-wider">
+                     {stats.primaryDevice.channel_mode === 'dual' ? 'Volume (Dual Zones)' : 'Volume'}
                    </p>
+                   {stats.primaryDevice.channel_mode === 'dual' ? (
+                     <div className="flex items-center gap-1.5 mt-0.5">
+                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-500/20 text-blue-200 border border-blue-400/30">
+                         <span className="font-bold text-blue-300">L:</span> {stats.primaryDevice.volume_left ?? stats.primaryDevice.volume ?? 15}/21
+                       </span>
+                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-purple-500/20 text-purple-200 border border-purple-400/30">
+                         <span className="font-bold text-purple-300">R:</span> {stats.primaryDevice.volume_right ?? stats.primaryDevice.volume ?? 15}/21
+                       </span>
+                     </div>
+                   ) : (
+                     <p className="text-white/90">
+                       {stats.primaryDevice.volume !== null && stats.primaryDevice.volume !== undefined
+                         ? `${stats.primaryDevice.volume}/21`
+                         : 'N/A'}
+                     </p>
+                   )}
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Firmware</p>
