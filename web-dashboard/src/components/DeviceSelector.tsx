@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { CheckSquare, Square, Wifi, WifiOff, Volume2, Layers, Check } from 'lucide-react'
+import { resolveDeviceLocation } from '@/lib/locationResolver'
 
 export type DeviceOption = {
   id: string
@@ -9,6 +10,9 @@ export type DeviceOption = {
   last_heartbeat: string | null
   location_area?: string | null
   location_city?: string | null
+  location_province?: string | null
+  location_country?: string | null
+  location_continent?: string | null
   profile_id?: string | null
   profile_name?: string | null
   stream_volume?: number | null
@@ -328,7 +332,15 @@ export function DeviceSelector({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground mt-0.5">
-                      {device.location_area && <span>📍 {device.location_area}</span>}
+                      {(() => {
+                        const loc = resolveDeviceLocation(device)
+                        if (!loc.formatted) return null
+                        return (
+                          <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400" title={loc.formatted}>
+                            📍 {loc.formatted}
+                          </span>
+                        )
+                      })()}
                       {device.mac_address && <span className="font-mono text-[11px]">({device.mac_address})</span>}
                     </div>
                   </div>

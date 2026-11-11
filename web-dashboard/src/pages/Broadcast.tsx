@@ -188,7 +188,7 @@ export default function Broadcast() {
       if (!schoolId) return []
       const { data, error } = await supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, profile_id, stream_volume, channel_mode, channel_label_left, channel_label_right, volume_left, volume_right, bell_profiles!bell_devices_profile_id_fkey(name)')
+        .select('id, name, mac_address, status, last_heartbeat, location_area, location_city, location_province, location_country, location_continent, profile_id, stream_volume, channel_mode, channel_label_left, channel_label_right, volume_left, volume_right, bell_profiles!bell_devices_profile_id_fkey(name)')
         .eq('school_id', schoolId)
         .order('name')
 
@@ -201,6 +201,9 @@ export default function Broadcast() {
         last_heartbeat: d.last_heartbeat,
         location_area: d.location_area,
         location_city: d.location_city,
+        location_province: d.location_province,
+        location_country: d.location_country,
+        location_continent: d.location_continent,
         profile_id: d.profile_id,
         profile_name: d.bell_profiles?.name || 'School Active Profile',
         stream_volume: d.stream_volume ?? 15,

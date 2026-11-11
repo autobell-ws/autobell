@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import { formatNotificationTime } from '@/lib/timeFormat'
+import { resolveDeviceLocation } from '@/lib/locationResolver'
 
 export default function Overview() {
   const { schoolId } = useAuth()
@@ -102,7 +103,7 @@ export default function Overview() {
 
       const schoolRes = await supabase
         .from('schools')
-        .select('name')
+        .select('name, address, campus_name, city')
         .eq('id', targetSchoolId)
         .maybeSingle()
 
@@ -128,7 +129,7 @@ export default function Overview() {
 
       let primaryOnlineQuery = supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_province, location_country, location_continent')
         .eq('status', 'online')
       if (targetSchoolId) {
         primaryOnlineQuery = primaryOnlineQuery.eq('school_id', targetSchoolId)
@@ -137,7 +138,7 @@ export default function Overview() {
 
       let firstDeviceQuery = supabase
         .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_province, location_country, location_continent')
       if (targetSchoolId) {
         firstDeviceQuery = firstDeviceQuery.eq('school_id', targetSchoolId)
       }
@@ -152,6 +153,7 @@ export default function Overview() {
         audioFilesCount: audioFilesRes.count ?? 0,
         pendingCommandsCount,
         schoolName,
+        schoolData: schoolRes.data || null,
         primaryDevice
       }
     },
@@ -243,17 +245,17 @@ export default function Overview() {
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Location</p>
-                    <div className="flex items-center text-white/90 truncate">
-                      <MapPin className="mr-1 h-3 w-3 shrink-0" />
-                      <span className="truncate">
-                         {[
-                           stats.primaryDevice.location_area,
-                           stats.primaryDevice.location_city,
-                           stats.primaryDevice.location_country,
-                           stats.primaryDevice.location_continent
-                         ].filter(val => val && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined').join(', ') || 'N/A'}
-                      </span>
-                    </div>
+                   {(() => {
+                     const loc = resolveDeviceLocation(stats.primaryDevice, stats.schoolData)
+                     return (
+                       <div className="flex items-center text-white/90 truncate" title={loc.formatted}>
+                         <MapPin className="mr-1 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                         <span className="truncate text-xs font-medium">
+                           {loc.formatted || 'N/A'}
+                         </span>
+                       </div>
+                     )
+                   })()}
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Status</p>

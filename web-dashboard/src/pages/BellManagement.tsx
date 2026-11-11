@@ -25,6 +25,7 @@ import { DeviceRegistrationModal } from '../components/DeviceRegistrationModal'
 import { DeviceSettingsModal } from '../components/DeviceSettingsModal'
 import { DeviceStickerModal } from '../components/DeviceStickerModal'
 import { useAuth } from '@/hooks/useAuth'
+import { resolveDeviceLocation } from '@/lib/locationResolver'
 
 type DeviceRecord = {
   id: string
@@ -36,6 +37,7 @@ type DeviceRecord = {
   input_voltage_mv?: number | null
   location_area?: string | null
   location_city?: string | null
+  location_province?: string | null
   location_country?: string | null
   location_continent?: string | null
   profile_id?: string | null
@@ -497,6 +499,19 @@ export default function BellManagement() {
     schoolName?: string | null
   } | null>(null)
   const [isStickerModalOpen, setIsStickerModalOpen] = useState(false)
+
+  const { data: schoolData } = useQuery({
+    queryKey: ['school_data', effectiveSchoolId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('schools')
+        .select('name, address, campus_name, city')
+        .eq('id', effectiveSchoolId)
+        .maybeSingle()
+      return data
+    },
+    enabled: !!effectiveSchoolId
+  })
 
   const { data: devices, isLoading } = useQuery<DeviceRecord[]>({
     queryKey: ['devices', effectiveSchoolId, isSuperAdmin],
@@ -1110,17 +1125,11 @@ export default function BellManagement() {
                       ? `${(device.input_voltage_mv / 1000).toFixed(2)} V (${device.input_voltage_mv >= 4500 ? 'Mains' : 'Battery'})`
                       : 'N/A'}
                   </div>
-                  <div className="truncate">
+                  <div className="truncate" title={resolveDeviceLocation(device, schoolData).formatted}>
                     <strong>Location:</strong>{' '}
-                    {(() => {
-                      const parts = [
-                        device.location_area,
-                        device.location_city,
-                        device.location_country,
-                        device.location_continent
-                      ].filter(val => val && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined');
-                      return parts.length > 0 ? parts.join(', ') : 'Unknown';
-                    })()}
+                    <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                      {resolveDeviceLocation(device, schoolData).formatted || 'Unknown'}
+                    </span>
                   </div>
                 </div>
               </div>
