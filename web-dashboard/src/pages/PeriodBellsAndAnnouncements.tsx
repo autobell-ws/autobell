@@ -3,7 +3,7 @@ import { Plus, Edit2, Save, Loader2, Calendar, Bell, Megaphone, Zap, AlertTriang
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { formatTimeForDatabase, formatTimeForDisplay, parseAmPmParts } from '@/lib/timeFormat'
+import { formatTimeForDatabase, formatTimeForDisplay, parseAmPmParts, getCurrentTime12h } from '@/lib/timeFormat'
 import { TimeSlotRow } from '@/components/profile/TimeSlotRow'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { BellProfile, ScheduleItem, AudioFileItem, BellTimeRow } from '@/types/profile'
@@ -828,7 +828,7 @@ function PeriodBellsEditorBody({
     const isMini = boardType === 'ESP32-C3 Mini'
     const newItem: ScheduleItem = {
       id: `temp-${Date.now()}`,
-      bell_time: '08:00 AM',
+      bell_time: getCurrentTime12h(),
       audio_file_id: (type === 'mp3' && !isMini) ? (audioFiles[0]?.id ?? null) : null,
       audio_file_id_2: null,
       delay_seconds: isMini ? 5 : 3,
@@ -845,9 +845,7 @@ function PeriodBellsEditorBody({
   }
 
   const dayItems = useMemo(() => {
-    return localSchedule
-      .filter(s => s.day_of_week === selectedDay)
-      .sort((a, b) => parseTimeToSeconds(a.bell_time) - parseTimeToSeconds(b.bell_time))
+    return localSchedule.filter(s => s.day_of_week === selectedDay)
   }, [localSchedule, selectedDay])
 
   return (

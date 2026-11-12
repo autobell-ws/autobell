@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// AutoBell Audio Combiner Edge Function
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -174,7 +174,7 @@ function validateAudioUrl(targetUrl: string): string {
   return finalUrl;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

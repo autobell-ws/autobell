@@ -449,6 +449,7 @@ export default function Broadcast() {
 
   // Speaker Streaming state for individual archive item
   const [streamingArchiveId, setStreamingArchiveId] = useState<string | null>(null)
+  const [activePlayingArchiveId, setActivePlayingArchiveId] = useState<string | null>(null)
 
   // Fetch Archive.org Stream Items (Supabase + localStorage cache)
   const archiveCacheKey = schoolId ? `autobell_archive_stream_${schoolId}` : 'autobell_archive_stream_default'
@@ -883,6 +884,7 @@ export default function Broadcast() {
       if (cmdError) throw cmdError
 
       setStreamIsActive(true)
+      setActivePlayingArchiveId(item.id)
       setStatus({ type: 'success', message: `Streaming "${item.title}" to selected devices via Archive.org!` })
     } catch (error) {
       console.error('Start archive stream failed:', error)
@@ -1429,6 +1431,7 @@ export default function Broadcast() {
       if (cmdError) throw cmdError
 
       setStreamIsActive(false)
+      setActivePlayingArchiveId(null)
       setStatus({ type: 'success', message: 'Stream stop queued! (In Queue - check notification bar when device stops)' })
     } catch (error) {
       console.error('Stop stream failed:', error)
@@ -2265,16 +2268,34 @@ export default function Broadcast() {
 
                 {/* Tracks list */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
                       <ListOrdered className="w-3.5 h-3.5 text-primary" />
                       Playback Sequence ({archiveItems.length} Track{archiveItems.length === 1 ? '' : 's'})
                     </label>
-                    {archiveItems.length > 0 && (
-                      <span className="text-[11px] text-muted-foreground">
-                        Use ▲ / ▼ buttons to adjust sequence order
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {streamIsActive && (
+                        <button
+                          type="button"
+                          onClick={stopStream}
+                          disabled={isSending}
+                          title="Stop playing stream on speakers"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-xs transition-all cursor-pointer"
+                        >
+                          {isSending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5 fill-current" />
+                          )}
+                          Stop Play on Speakers
+                        </button>
+                      )}
+                      {archiveItems.length > 0 && (
+                        <span className="text-[11px] text-muted-foreground">
+                          Use ▲ / ▼ buttons to adjust sequence order
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {loadingArchiveItems ? (
@@ -2418,21 +2439,38 @@ export default function Broadcast() {
                                 )}
                               </button>
 
-                              {/* Play on Speakers */}
-                              <button
-                                type="button"
-                                onClick={() => handleStreamArchiveItemToSpeakers(item)}
-                                disabled={isSending || isStreaming}
-                                title="Broadcast this track right now to speakers"
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs disabled:opacity-50 transition-all"
-                              >
-                                {isStreaming ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Play className="w-3 h-3" />
-                                )}
-                                Play on Speakers
-                              </button>
+                              {/* Play / Stop on Speakers */}
+                              {activePlayingArchiveId === item.id && streamIsActive ? (
+                                <button
+                                  type="button"
+                                  onClick={stopStream}
+                                  disabled={isSending}
+                                  title="Stop playing this track on speakers"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                                >
+                                  {isSending ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Square className="w-3 h-3 fill-current" />
+                                  )}
+                                  Stop Play on Speakers
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStreamArchiveItemToSpeakers(item)}
+                                  disabled={isSending || isStreaming}
+                                  title="Broadcast this track right now to speakers"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                                >
+                                  {isStreaming ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Play className="w-3 h-3" />
+                                  )}
+                                  Play on Speakers
+                                </button>
+                              )}
 
                               {/* Enable/Disable Toggle */}
                               <button

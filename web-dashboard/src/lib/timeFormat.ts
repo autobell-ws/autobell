@@ -25,6 +25,16 @@ export const formatTimeForDisplay = (time24h: string): string => {
 
 export const convert24to12 = formatTimeForDisplay;
 
+export const getCurrentTime12h = (): string => {
+  const now = new Date();
+  let h = now.getHours();
+  const m = now.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  h = h ? h : 12;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+};
+
 export const parseAmPmParts = (timeStr: string) => {
     if (!timeStr) return { h: 12, m: 0, ampm: 'AM' as const };
     if (!timeStr.includes(' ')) {

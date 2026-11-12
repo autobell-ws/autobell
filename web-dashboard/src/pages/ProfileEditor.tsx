@@ -18,7 +18,7 @@ type ProfileEditorBodyProps = {
     schoolId: string | null
 }
 
-import { formatTimeForDatabase, formatTimeForDisplay, parseAmPmParts } from '@/lib/timeFormat'
+import { formatTimeForDatabase, formatTimeForDisplay, parseAmPmParts, getCurrentTime12h } from '@/lib/timeFormat'
 import { TimeSlotRow } from '@/components/profile/TimeSlotRow'
 
 export default function ProfileEditor() {
@@ -571,7 +571,7 @@ function ProfileEditorBody({
     const handleAddItem = () => {
         const newItem: ScheduleItem = {
             id: `temp-${Date.now()}`,
-            bell_time: '08:00 AM',
+            bell_time: getCurrentTime12h(),
             audio_file_id: activeTab === 'bells' ? (audioFiles[0]?.id ?? null) : null,
             audio_file_id_2: null,
             delay_seconds: 0,

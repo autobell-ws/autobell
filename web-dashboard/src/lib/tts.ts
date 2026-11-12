@@ -5,42 +5,63 @@ export async function generateSecureTTS(
   text: string,
   settings: any = {}
 ): Promise<Blob> {
-  const { data, error } = await supabase.functions.invoke('generate-speech', {
-    body: { provider, text, settings },
-    // @ts-expect-error - responseType is valid but missing in types
-    responseType: 'blob',
-  })
+  let edgeErrorMsg = '';
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-speech', {
+      body: { provider, text, settings },
+      // @ts-expect-error - responseType is valid but missing in types
+      responseType: 'blob',
+    })
 
-  if (error) {
-    let detailMsg = error.message;
-
-    // Attempt to extract detailed error message from response context body
-    if ((error as any).context && typeof (error as any).context.text === 'function') {
-      try {
-        const bodyText = await (error as any).context.text();
-        const parsed = JSON.parse(bodyText);
-        if (parsed?.error) detailMsg = parsed.error;
-      } catch (_) {
-        // preserve default message
+    if (!error && data) {
+      if (data instanceof Blob) {
+        return data;
+      } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+        return new Blob([data as BlobPart], { type: 'audio/mpeg' });
       }
     }
 
-    // If a custom provider (e.g. openai) failed, automatically fallback to google-free
-    if (provider !== 'google-free') {
-      console.warn(`Provider ${provider} failed (${detailMsg}). Falling back to Google Free TTS...`);
-      return generateSecureTTS('google-free', text, settings);
+    if (error) {
+      edgeErrorMsg = error.message || '';
+      if ((error as any).context && typeof (error as any).context.text === 'function') {
+        try {
+          const bodyText = await (error as any).context.text();
+          const parsed = JSON.parse(bodyText);
+          if (parsed?.error) edgeErrorMsg = parsed.error;
+        } catch (_) {}
+      }
     }
-
-    throw new Error(detailMsg || `Failed to generate speech via secure endpoint for ${provider}`)
+  } catch (err: any) {
+    edgeErrorMsg = err?.message || 'Failed to connect to edge function';
   }
 
-  if (data instanceof Blob) {
-    return data;
-  } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-    return new Blob([data as BlobPart], { type: 'audio/mpeg' });
+  // Fallback to Vercel Serverless Function (/api/generate-speech) if Edge Function is unavailable
+  try {
+    const response = await fetch('/api/generate-speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ provider, text, settings }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      if (blob && blob.size > 0) {
+        return blob;
+      }
+    }
+  } catch (fallbackErr) {
+    console.warn('Vercel API fallback failed:', fallbackErr);
   }
 
-  throw new Error('Invalid response from secure endpoint');
+  // If a custom provider (e.g. openai) failed, automatically fallback to google-free
+  if (provider !== 'google-free') {
+    console.warn(`Provider ${provider} failed (${edgeErrorMsg}). Falling back to Google Free TTS...`);
+    return generateSecureTTS('google-free', text, settings);
+  }
+
+  throw new Error(edgeErrorMsg || `Failed to generate speech via secure endpoint for ${provider}`);
 }
 
 export async function generateTTS(

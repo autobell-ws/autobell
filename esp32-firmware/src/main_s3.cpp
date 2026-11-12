@@ -36,12 +36,12 @@
 
 // Supabase Configuration
 // Supabase Configuration (Dynamic with working default fallbacks)
-char SUPABASE_URL[100] = "https://zoqzgirtrhpxodrutjvs.supabase.co";
+char SUPABASE_URL[100] = "https://oopyelhldjyyoupetynq.supabase.co";
 char SUPABASE_KEY[300] =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcXpnaXJ0cmhweG9kcnV0anZzIiwicm9sZSI6Im"
-    "Fub24iLCJpYXQiOjE3OTA5NjI4MjksImV4cCI6MjEwNjUzODgyOX0."
-    "lLDg3wusxxumjEfEW2ny_60qJ8VdBwmlODwDLOxvPDc";
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vcHllbGhsZGp5eW91cGV0eW5xIiwicm9sZSI6Im"
+    "Fub24iLCJpYXQiOjE3OTM3MzA0ODgsImV4cCI6MjEwOTMwNjQ4OH0."
+    "Nw2qW21GJs9MjkC_U6rcHt3uCS846K2oB8j4WkvcLdQ";
 
 // Firmware Version
 #define FIRMWARE_VERSION "1.0.1"
@@ -255,7 +255,7 @@ void syncAudioCache();
 
 void startBuzzerTone(unsigned int freq = 3000);
 void stopBuzzerTone();
-void playBell(String label = "Manual Bell", int durationSeconds = 3);
+void playBell(String label = "Manual Bell", int durationSeconds = 3, String channel = "both");
 void startStreamPlayback(const String &url);
 void stopStreamPlayback();
 void stopBuzzer(); // Helper to force stop
@@ -485,6 +485,15 @@ void setup() {
   }
   String storedSupaUrl = preferences.getString("supa_url", "");
   String storedSupaKey = preferences.getString("supa_key", "");
+  if (storedSupaUrl.startsWith("http://192.168.") || storedSupaUrl.indexOf("zoqz") >= 0 || storedSupaUrl.indexOf("localhost") >= 0) {
+    Serial.println("Purging legacy/local Supabase URL from NVS...");
+    preferences.remove("supa_url");
+    preferences.remove("supa_key");
+    preferences.remove("device_db_id");
+    preferences.remove("school_id");
+    storedSupaUrl = "";
+    storedSupaKey = "";
+  }
   if (storedSupaUrl.length() > 0) {
     storedSupaUrl.toCharArray(SUPABASE_URL, 100);
   }
@@ -914,6 +923,9 @@ void loop() {
       if (audioHasStarted) {
         if (audio && !audio->isRunning()) {
           Serial.println(isLocalPlayback ? "Local Playback Finished." : "Streaming Finished.");
+          if (audio) {
+            audio->setBalance(0);
+          }
           disableAmp();
           playState = PLAY_IDLE;
           isLocalPlayback = false;
@@ -928,6 +940,9 @@ void loop() {
           Serial.println(isLocalPlayback ? "Local Playback Failed to Start (Timeout)." : "Stream Buffering Timeout.");
           if (audio && audio->isRunning())
             audio->stopSong();
+          if (audio) {
+            audio->setBalance(0);
+          }
           disableAmp();
           playState = PLAY_IDLE;
           isLocalPlayback = false;
@@ -943,6 +958,9 @@ void loop() {
           Serial.println("Streaming Timeout / Watchdog Triggered. Force Stop.");
           if (audio && audio->isRunning())
             audio->stopSong();
+          if (audio) {
+            audio->setBalance(0);
+          }
           disableAmp();
           playState = PLAY_IDLE;
           isLocalPlayback = false;
@@ -1525,8 +1543,8 @@ void stopBuzzerTone() {
   Serial.flush();
 }
 
-void playBell(String label, int durationSeconds) {
-  Serial.println("--- playBell() START --- (" + label + ")");
+void playBell(String label, int durationSeconds, String channel) {
+  Serial.println("--- playBell() START --- (" + label + ", channel=" + channel + ", dur=" + String(durationSeconds) + ")");
   Serial.flush();
 
   // Stop any streaming audio safely
@@ -1534,22 +1552,83 @@ void playBell(String label, int durationSeconds) {
     if (audio->isRunning())
       audio->stopSong();
   }
-  Serial.println("[RELAY] Step 1: Audio checked"); Serial.flush();
 
-  buzzerDurationMs = (durationSeconds > 0) ? ((unsigned long)durationSeconds * 1000) : 3000;
-  Serial.printf("[RELAY] Step 2: Duration set to %lu ms\n", buzzerDurationMs); Serial.flush();
+  // Determine balance:
+  // In ESP32-audioI2S:
+  // bal = 16: mutes Right, Left plays at full volume
+  // bal = -16: mutes Left, Right plays at full volume
+  // bal = 0: both channels play at full volume
+  int8_t bal = 0;
+  String chLower = channel;
+  chLower.toLowerCase();
+  chLower.trim();
+  String chLabel = "Both Zones";
+  if (chLower == "left") {
+    bal = 16;
+    chLabel = "Left Zone";
+  } else if (chLower == "right") {
+    bal = -16;
+    chLabel = "Right Zone";
+  } else {
+    bal = 0;
+    chLabel = "Both Zones";
+  }
 
-  Serial.println("[RELAY] Step 3: Triggering Relay ON"); Serial.flush();
-  startBuzzerTone(3000);
-  Serial.println("[RELAY] Step 4: Relay ON active"); Serial.flush();
+  String chimePath = "/chimes/pre_announcement.mp3";
+  bool isLocalChime = false;
+  if (LittleFS.exists(chimePath)) {
+    File f = LittleFS.open(chimePath, "r");
+    if (f) {
+      if (f.size() > 1000) {
+        isLocalChime = true;
+      }
+      f.close();
+    }
+  }
 
-  lcdBuzzerDetail = label;
-  playState = PLAY_BUZZER;
-  playStateStartTime = millis();
-  updateLCD();
+  enableAmp();
+  initAudio();
 
-  Serial.printf("Gong Bell Relay ON. Waiting %lu ms...\n", buzzerDurationMs);
-  Serial.flush();
+  if (audio && (isLocalChime || preAnnouncementUrl.length() > 0)) {
+    audio->setBalance(bal);
+    audio->setVolume(getI2SVolumeFromSystem(systemVolume));
+
+    if (isLocalChime) {
+      Serial.println("[BELL] Playing bell chime from LittleFS: " + chimePath + " [Channel: " + chLabel + ", Balance: " + String(bal) + "]");
+      audio->connecttoFS(LittleFS, chimePath.c_str());
+      isLocalPlayback = true;
+    } else {
+      String fullChimeUrl = preAnnouncementUrl;
+      if (!fullChimeUrl.startsWith("http")) {
+        String cleanPath = preAnnouncementUrl;
+        if (cleanPath.startsWith("pre-announcements/")) cleanPath = cleanPath.substring(18);
+        else if (cleanPath.startsWith("/pre-announcements/")) cleanPath = cleanPath.substring(19);
+        while (cleanPath.startsWith("/")) cleanPath = cleanPath.substring(1);
+        fullChimeUrl = String(SUPABASE_URL) + "/storage/v1/object/public/pre-announcements/" + cleanPath;
+      }
+      Serial.println("[BELL] Playing bell chime from URL: " + fullChimeUrl + " [Channel: " + chLabel + ", Balance: " + String(bal) + "]");
+      audio->connecttohost(fullChimeUrl.c_str());
+      isLocalPlayback = false;
+    }
+
+    lcdPlayingType = "Test Ring";
+    lcdPlayingDetail = chLabel;
+    audioHasStarted = false;
+    streamingTimeoutMs = (durationSeconds > 0) ? ((unsigned long)durationSeconds * 1000 + 4000) : 12000;
+    playState = PLAY_STREAMING;
+    playStateStartTime = millis();
+    updateLCD();
+    Serial.println("[BELL] Audio chime playback initiated.");
+  } else {
+    // Fallback to mechanical buzzer/relay if no audio chime is available
+    Serial.println("[BELL] No audio chime available. Falling back to mechanical buzzer relay.");
+    buzzerDurationMs = (durationSeconds > 0) ? ((unsigned long)durationSeconds * 1000) : 3000;
+    startBuzzerTone(3000);
+    lcdBuzzerDetail = label;
+    playState = PLAY_BUZZER;
+    playStateStartTime = millis();
+    updateLCD();
+  }
 }
 
 void startStreamPlayback(const String &url) {
@@ -1605,6 +1684,9 @@ void stopStreamPlayback() {
   Serial.println("Stopping Stream Playback");
   if (audio && audio->isRunning())
     audio->stopSong();
+  if (audio) {
+    audio->setBalance(0);
+  }
   disableAmp();
   playState = PLAY_IDLE;
   isLocalPlayback = false;
@@ -3007,11 +3089,17 @@ void executeCommand(const char *cmd, JsonObject payload, String cmdId) {
     }
     executed = false; // Already acked above! Do not re-ack at bottom while buzzer is active!
     int duration = 3;
-    if (!payload.isNull() && payload.containsKey("duration")) {
-      duration = payload["duration"].as<int>();
-      if (duration <= 0) duration = 3;
+    String ringChannel = "both";
+    if (!payload.isNull()) {
+      if (payload.containsKey("duration")) {
+        duration = payload["duration"].as<int>();
+        if (duration <= 0) duration = 3;
+      }
+      if (payload.containsKey("channel")) {
+        ringChannel = payload["channel"].as<String>();
+      }
     }
-    playBell("Manual Ring", duration);
+    playBell("Manual Ring", duration, ringChannel);
   } else if (strcmp(cmd, "PLAY_URL") == 0) {
     Serial.println("Executing command: PLAY_URL");
     String url = "";
