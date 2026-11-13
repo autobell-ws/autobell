@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useCurrency } from '@/context/CurrencyContext'
 import { AudioSoundboard } from '@/components/public/AudioSoundboard'
+import { RoiCalculator } from '@/components/public/RoiCalculator'
 import {
   Cpu,
   WifiOff,
@@ -555,7 +556,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 5. REGIONAL MARKET HIGHLIGHTS */}
+      {/* 5. INTERACTIVE ROI CALCULATOR */}
+      <section className="py-20 lg:py-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <RoiCalculator />
+      </section>
+
+      {/* 6. REGIONAL MARKET HIGHLIGHTS */}
       <section className="py-16 lg:py-24 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">

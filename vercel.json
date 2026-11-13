@@ -1,12 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install && cd web-dashboard && npm install",
+  "installCommand": "cd web-dashboard && npm install",
   "buildCommand": "cd web-dashboard && npm run build",
   "outputDirectory": "web-dashboard/dist",
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]

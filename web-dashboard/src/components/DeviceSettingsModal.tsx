@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { X, Save, Volume2, Calendar, BellRing, Play, Pause, Cpu, Upload, Sliders, Split, Radio, Info, MapPin, Sparkles, Navigation } from 'lucide-react'
+import { X, Save, Volume2, Calendar, BellRing, Play, Pause, Cpu, Upload, Sliders, Split, Radio, Info } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { resolveDeviceLocation } from '@/lib/locationResolver'
 
 type BellProfileOption = {
   id: string
@@ -33,11 +32,6 @@ type DeviceRecord = {
   profile_id_right?: string | null
   channel_label_left?: string | null
   channel_label_right?: string | null
-  location_area?: string | null
-  location_city?: string | null
-  location_province?: string | null
-  location_country?: string | null
-  location_continent?: string | null
 }
 
 type DeviceSettingsModalProps = {
@@ -63,14 +57,6 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
   // Profile Assignment State (Unified)
   const [profileId, setProfileId] = useState<string>('INHERIT')
   const [profiles, setProfiles] = useState<BellProfileOption[]>([])
-
-  // Geographic Location State
-  const [locationArea, setLocationArea] = useState<string>('')
-  const [locationCity, setLocationCity] = useState<string>('')
-  const [locationProvince, setLocationProvince] = useState<string>('')
-  const [locationCountry, setLocationCountry] = useState<string>('')
-  const [locationContinent, setLocationContinent] = useState<string>('')
-  const [schoolData, setSchoolData] = useState<{ name?: string; address?: string; campus_name?: string; city?: string } | null>(null)
 
   // Pre-Announcement Override State
   const [useCustomPa, setUseCustomPa] = useState<boolean>(false)
@@ -188,19 +174,16 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
         .order('created_at')
       setPaSounds(soundData || [])
 
-      // 3. Fetch School's default pre-announcement sound & location details
-      const { data: schoolRes } = await supabase
+      // 3. Fetch School's default pre-announcement sound
+      const { data: schoolData } = await supabase
         .from('schools')
-        .select('name, address, campus_name, city, default_pre_announcement_id')
+        .select('default_pre_announcement_id')
         .eq('id', schoolId)
         .single()
 
-      if (schoolRes) {
-        setSchoolData(schoolRes)
-        if (schoolRes.default_pre_announcement_id && soundData) {
-          const def = soundData.find(s => s.id === schoolRes.default_pre_announcement_id)
-          if (def) setSchoolDefaultSoundTitle(def.title)
-        }
+      if (schoolData?.default_pre_announcement_id && soundData) {
+        const def = soundData.find(s => s.id === schoolData.default_pre_announcement_id)
+        if (def) setSchoolDefaultSoundTitle(def.title)
       }
     }
 
@@ -220,14 +203,6 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
       setProfileIdLeft(device.profile_id_left || device.profile_id || 'INHERIT')
       setProfileIdRight(device.profile_id_right || device.profile_id || 'INHERIT')
 
-      // Initialize location fields (prioritizing device, fallback to resolved hierarchy)
-      const resolved = resolveDeviceLocation(device, schoolData)
-      setLocationArea(device.location_area || resolved.area)
-      setLocationCity(device.location_city || resolved.city)
-      setLocationProvince(device.location_province || resolved.province)
-      setLocationCountry(device.location_country || resolved.country)
-      setLocationContinent(device.location_continent || resolved.continent)
-
       const hasCustomPa = 
         device.pre_announcement_enabled !== null || 
         device.pre_announcement_id !== null || 
@@ -238,19 +213,7 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
       setPaSoundId(device.pre_announcement_id || '')
       setPaDelay(device.pre_announcement_delay_seconds ?? 3)
     }
-  }, [device, schoolData])
-
-  const handleAutoDetectLocation = () => {
-    if (!device) return
-    const resolved = resolveDeviceLocation(device, schoolData)
-    setLocationArea(resolved.area)
-    setLocationCity(resolved.city)
-    setLocationProvince(resolved.province)
-    setLocationCountry(resolved.country)
-    setLocationContinent(resolved.continent)
-    setSuccess(`Auto-resolved location: ${resolved.formatted}`)
-    setTimeout(() => setSuccess(null), 4000)
-  }
+  }, [device])
 
   if (!isOpen || !device) return null
 
@@ -317,11 +280,6 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
         pre_announcement_enabled: isMini ? null : (useCustomPa ? paEnabled : null),
         pre_announcement_id: isMini ? null : (useCustomPa && paSoundId ? paSoundId : null),
         pre_announcement_delay_seconds: isMini ? null : (useCustomPa ? paDelay : null),
-        location_area: locationArea.trim() || null,
-        location_city: locationCity.trim() || null,
-        location_province: locationProvince.trim() || null,
-        location_country: locationCountry.trim() || null,
-        location_continent: locationContinent.trim() || null,
       }
 
       // 1. Update bell_devices table
@@ -751,94 +709,6 @@ export function DeviceSettingsModal({ isOpen, onClose, device, onUpdate }: Devic
               </div>
             </>
           )}
-
-          {/* Device Geographic Location Hierarchy */}
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.03] p-4 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/60 pb-3">
-              <div>
-                <h4 className="font-semibold text-foreground flex items-center gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-emerald-500" />
-                  Geographic Location Hierarchy
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Full place hierarchy: Area, City, Province, Country, Continent.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAutoDetectLocation}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all self-start sm:self-auto shrink-0 shadow-xs"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                Auto-Detect from School
-              </button>
-            </div>
-
-            {/* Location Form Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block text-muted-foreground font-medium mb-1">Area / Neighborhood</label>
-                <input
-                  type="text"
-                  value={locationArea}
-                  onChange={(e) => setLocationArea(e.target.value)}
-                  placeholder="e.g. Saddar"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-muted-foreground font-medium mb-1">City</label>
-                <input
-                  type="text"
-                  value={locationCity}
-                  onChange={(e) => setLocationCity(e.target.value)}
-                  placeholder="e.g. Karachi"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-muted-foreground font-medium mb-1">Province / State</label>
-                <input
-                  type="text"
-                  value={locationProvince}
-                  onChange={(e) => setLocationProvince(e.target.value)}
-                  placeholder="e.g. Sindh"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-muted-foreground font-medium mb-1">Country</label>
-                <input
-                  type="text"
-                  value={locationCountry}
-                  onChange={(e) => setLocationCountry(e.target.value)}
-                  placeholder="e.g. Pakistan"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-muted-foreground font-medium mb-1">Continent</label>
-                <input
-                  type="text"
-                  value={locationContinent}
-                  onChange={(e) => setLocationContinent(e.target.value)}
-                  placeholder="e.g. Asia"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Location Summary Preview */}
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300">
-              <Navigation className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span className="font-semibold">Resolved Place:</span>
-              <span className="truncate font-medium">
-                {[locationArea, locationCity, locationProvince, locationCountry, locationContinent]
-                  .filter(Boolean)
-                  .join(', ') || 'Not configured'}
-              </span>
-            </div>
-          </div>
 
           {/* OTA Firmware Update Panel */}
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">

@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If already known super admin, set early to prevent render flash
       if (metaRole === 'super_admin' || isKnownSuperAdmin) {
         setBaseRole('super_admin')
-        setDbSchoolId('c548b770-fac6-4246-9c03-2c0f3ab72474')
+        setDbSchoolId(null)
       }
 
       // 2. Query public.users
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('Profile query fallback for:', userId, error)
         const finalRole = (metaRole === 'super_admin' || isKnownSuperAdmin) ? 'super_admin' : (metaRole || 'admin')
         setBaseRole(finalRole)
-        setDbSchoolId(finalRole === 'super_admin' ? 'c548b770-fac6-4246-9c03-2c0f3ab72474' : 'c548b770-fac6-4246-9c03-2c0f3ab72474')
+        setDbSchoolId(finalRole === 'super_admin' ? null : 'a0000000-0000-0000-0000-000000000001')
         setTtsEnabled(true)
         setOtaEnabled(true)
         return
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setBaseRole(resolvedRole)
-      setDbSchoolId(data.school_id ?? 'c548b770-fac6-4246-9c03-2c0f3ab72474')
+      setDbSchoolId(resolvedRole === 'super_admin' ? null : (data.school_id ?? null))
       setTtsEnabled(data.tts_enabled !== false)
       setOtaEnabled(data.ota_enabled !== false)
 
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isKnownSuperAdmin = currentUser?.email?.toLowerCase() === 'muddasirh@gmail.com'
       const fallbackRole: AuthRole = isKnownSuperAdmin ? 'super_admin' : 'admin'
       setBaseRole(fallbackRole)
-      setDbSchoolId('c548b770-fac6-4246-9c03-2c0f3ab72474')
+      setDbSchoolId(fallbackRole === 'super_admin' ? null : 'a0000000-0000-0000-0000-000000000001')
       setTtsEnabled(true)
       setOtaEnabled(true)
     }
@@ -229,9 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const effectiveSchoolId = useMemo(() => {
     if (baseRole === 'super_admin') {
-      return inspectedSchoolId || dbSchoolId || 'c548b770-fac6-4246-9c03-2c0f3ab72474'
+      return inspectedSchoolId
     }
-    return dbSchoolId || 'c548b770-fac6-4246-9c03-2c0f3ab72474'
+    return dbSchoolId
   }, [baseRole, inspectedSchoolId, dbSchoolId])
 
   const effectivePartnerId = useMemo(() => {

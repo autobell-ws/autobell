@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import { formatNotificationTime } from '@/lib/timeFormat'
-import { resolveDeviceLocation } from '@/lib/locationResolver'
 
 export default function Overview() {
   const { schoolId } = useAuth()
@@ -97,52 +96,50 @@ export default function Overview() {
         .select('id', { count: 'exact', head: true })
         .not('storage_path', 'ilike', 'combined/%')
 
-      const targetSchoolId = schoolId || 'c548b770-fac6-4246-9c03-2c0f3ab72474'
-      let schoolName = 'Husamiyah School'
+      let schoolName = 'My School'
       let pendingCommandsCount = 0
+      if (schoolId) {
+        const schoolRes = await supabase
+          .from('schools')
+          .select('name')
+          .eq('id', schoolId)
+          .maybeSingle()
 
-      const schoolRes = await supabase
-        .from('schools')
-        .select('name, address, campus_name, city')
-        .eq('id', targetSchoolId)
+        if (!schoolRes.error && schoolRes.data) {
+          schoolName = schoolRes.data.name
+        }
+
+        // Fetch device IDs to get command queue count
+        const { data: devices } = await supabase
+          .from('bell_devices')
+          .select('id')
+          .eq('school_id', schoolId)
+
+        if (devices && devices.length > 0) {
+          const deviceIds = devices.map(d => d.id)
+          const { count } = await supabase
+            .from('command_queue')
+            .select('id', { count: 'exact', head: true })
+            .in('device_id', deviceIds)
+            .eq('status', 'pending')
+          pendingCommandsCount = count ?? 0
+        }
+      }
+
+      const primaryOnlineRes = await supabase
+        .from('bell_devices')
+        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .eq('school_id', schoolId)
+        .eq('status', 'online')
+        .limit(1)
         .maybeSingle()
 
-      if (!schoolRes.error && schoolRes.data) {
-        schoolName = schoolRes.data.name
-      }
-
-      // Fetch device IDs to get command queue count
-      const { data: devices } = await supabase
+      const firstDeviceRes = await supabase
         .from('bell_devices')
-        .select('id')
-        .eq('school_id', targetSchoolId)
-
-      if (devices && devices.length > 0) {
-        const deviceIds = devices.map(d => d.id)
-        const { count } = await supabase
-          .from('command_queue')
-          .select('id', { count: 'exact', head: true })
-          .in('device_id', deviceIds)
-          .eq('status', 'pending')
-        pendingCommandsCount = count ?? 0
-      }
-
-      let primaryOnlineQuery = supabase
-        .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_province, location_country, location_continent')
-        .eq('status', 'online')
-      if (targetSchoolId) {
-        primaryOnlineQuery = primaryOnlineQuery.eq('school_id', targetSchoolId)
-      }
-      const primaryOnlineRes = await primaryOnlineQuery.limit(1).maybeSingle()
-
-      let firstDeviceQuery = supabase
-        .from('bell_devices')
-        .select('id, name, mac_address, status, last_heartbeat, volume, volume_left, volume_right, channel_mode, channel_label_left, channel_label_right, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_province, location_country, location_continent')
-      if (targetSchoolId) {
-        firstDeviceQuery = firstDeviceQuery.eq('school_id', targetSchoolId)
-      }
-      const firstDeviceRes = await firstDeviceQuery.limit(1).maybeSingle()
+        .select('id, name, mac_address, status, last_heartbeat, volume, firmware_version, board_type, input_voltage_mv, location_area, location_city, location_country, location_continent')
+        .eq('school_id', schoolId)
+        .limit(1)
+        .maybeSingle()
 
       const primaryDevice = primaryOnlineRes.data || firstDeviceRes.data || null
 
@@ -153,7 +150,6 @@ export default function Overview() {
         audioFilesCount: audioFilesRes.count ?? 0,
         pendingCommandsCount,
         schoolName,
-        schoolData: schoolRes.data || null,
         primaryDevice
       }
     },
@@ -245,17 +241,17 @@ export default function Overview() {
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Location</p>
-                   {(() => {
-                     const loc = resolveDeviceLocation(stats.primaryDevice, stats.schoolData)
-                     return (
-                       <div className="flex items-center text-white/90 truncate" title={loc.formatted}>
-                         <MapPin className="mr-1 h-3.5 w-3.5 shrink-0 text-emerald-300" />
-                         <span className="truncate text-xs font-medium">
-                           {loc.formatted || 'N/A'}
-                         </span>
-                       </div>
-                     )
-                   })()}
+                    <div className="flex items-center text-white/90 truncate">
+                      <MapPin className="mr-1 h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                         {[
+                           stats.primaryDevice.location_area,
+                           stats.primaryDevice.location_city,
+                           stats.primaryDevice.location_country,
+                           stats.primaryDevice.location_continent
+                         ].filter(val => val && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined').join(', ') || 'N/A'}
+                      </span>
+                    </div>
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Status</p>
@@ -265,25 +261,12 @@ export default function Overview() {
                    </p>
                  </div>
                  <div>
-                   <p className="text-emerald-100 text-xs uppercase tracking-wider">
-                     {stats.primaryDevice.channel_mode === 'dual' ? 'Volume (Dual Zones)' : 'Volume'}
+                   <p className="text-emerald-100 text-xs uppercase tracking-wider">Volume</p>
+                   <p className="text-white/90">
+                     {stats.primaryDevice.volume !== null && stats.primaryDevice.volume !== undefined
+                       ? `${stats.primaryDevice.volume}/21`
+                       : 'N/A'}
                    </p>
-                   {stats.primaryDevice.channel_mode === 'dual' ? (
-                     <div className="flex items-center gap-1.5 mt-0.5">
-                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-500/20 text-blue-200 border border-blue-400/30">
-                         <span className="font-bold text-blue-300">L:</span> {stats.primaryDevice.volume_left ?? stats.primaryDevice.volume ?? 15}/21
-                       </span>
-                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-purple-500/20 text-purple-200 border border-purple-400/30">
-                         <span className="font-bold text-purple-300">R:</span> {stats.primaryDevice.volume_right ?? stats.primaryDevice.volume ?? 15}/21
-                       </span>
-                     </div>
-                   ) : (
-                     <p className="text-white/90">
-                       {stats.primaryDevice.volume !== null && stats.primaryDevice.volume !== undefined
-                         ? `${stats.primaryDevice.volume}/21`
-                         : 'N/A'}
-                     </p>
-                   )}
                  </div>
                  <div>
                    <p className="text-emerald-100 text-xs uppercase tracking-wider">Firmware</p>

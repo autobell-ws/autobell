@@ -170,7 +170,7 @@ export function DeleteSchoolModal({
                   <strong className="text-foreground">Live Streaming:</strong> All school broadcast playlists and automated streaming schedules will be removed.
                 </li>
                 <li>
-                  <strong className="text-foreground">Hardware Controllers:</strong> Any assigned bell controllers will be unassigned and returned to inventory.
+                  <strong className="text-foreground">Hardware Controllers:</strong> Any assigned ESP32 bell controllers will be unassigned and returned to inventory.
                 </li>
                 <li>
                   <strong className="text-foreground">User Accounts:</strong> Staff and admin accounts bound to this school will be unassigned.

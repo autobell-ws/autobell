@@ -27,7 +27,6 @@
     "lamejs": "^1.2.1",
     "lucide-react": "^0.562.0",
     "mic-recorder-to-mp3": "^2.2.2",
-    "nodemailer": "^6.9.16",
     "pg": "^8.17.2",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",

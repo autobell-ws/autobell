@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/context/AuthContext'
 import { CurrencyProvider } from '@/context/CurrencyContext'
@@ -48,6 +48,7 @@ import Products from '@/pages/public/Products'
 import Pricing from '@/pages/public/Pricing'
 import Solutions from '@/pages/public/Solutions'
 import Buy from '@/pages/public/Buy'
+import CalculatorPage from '@/pages/public/CalculatorPage'
 import DemoPage from '@/pages/public/DemoPage'
 import PartnersPage from '@/pages/public/PartnersPage'
 import AboutContactPage from '@/pages/public/AboutContactPage'
@@ -71,7 +72,7 @@ function App() {
                     <Route path="/solutions" element={<Solutions />} />
                     <Route path="/solutions/:type" element={<Solutions />} />
                     <Route path="/buy" element={<Buy />} />
-                    <Route path="/calculator" element={<Navigate to="/" replace />} />
+                    <Route path="/calculator" element={<CalculatorPage />} />
                     <Route path="/demo" element={<DemoPage />} />
                     <Route path="/partners" element={<PartnersPage />} />
                     <Route path="/about" element={<AboutContactPage />} />

@@ -211,21 +211,15 @@ export default function CommunicationIntegrations() {
       const res = await sendEmailNotification({
         templateKey: testEmailTemplate,
         recipient: testEmailRecipient.trim(),
-        variables: sampleVariables,
-        testMode: true,
-        customConfig: emailConfig
+        variables: sampleVariables
       })
 
-      if (res.success && res.status === 'sent') {
-        toast.success(`Live Test Succeeded: ${res.message}`)
-        const updatedLogs = await getCommunicationLogs(100)
-        setLogs(updatedLogs)
-      } else if (res.success && res.status === 'simulated') {
-        toast.info(res.message)
+      if (res.success) {
+        toast.success(res.message)
         const updatedLogs = await getCommunicationLogs(100)
         setLogs(updatedLogs)
       } else {
-        toast.error(res.message || 'Email delivery failed')
+        toast.error(res.message)
       }
     } catch (err: any) {
       toast.error('Test dispatch failed: ' + err.message)
@@ -267,21 +261,15 @@ export default function CommunicationIntegrations() {
       const res = await sendWhatsAppNotification({
         templateKey: testWaTemplate,
         recipientPhone: testWaRecipient.trim(),
-        variables: sampleVariables,
-        testMode: true,
-        customConfig: whatsappConfig
+        variables: sampleVariables
       })
 
-      if (res.success && res.status === 'sent') {
-        toast.success(`Live Test Succeeded: ${res.message}`)
-        const updatedLogs = await getCommunicationLogs(100)
-        setLogs(updatedLogs)
-      } else if (res.success && res.status === 'simulated') {
-        toast.info(res.message)
+      if (res.success) {
+        toast.success(res.message)
         const updatedLogs = await getCommunicationLogs(100)
         setLogs(updatedLogs)
       } else {
-        toast.error(res.message || 'WhatsApp message dispatch failed')
+        toast.error(res.message)
       }
     } catch (err: any) {
       toast.error('Test dispatch failed: ' + err.message)
@@ -465,23 +453,9 @@ export default function CommunicationIntegrations() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-                      emailConfig.is_enabled
-                        ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                        : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        emailConfig.is_enabled ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                      }`}
-                    />
-                    {emailConfig.is_enabled ? 'Live Production Active' : 'Simulation Mode'}
-                  </span>
-                  <label htmlFor="email-enabled-toggle" className="text-xs font-medium text-foreground cursor-pointer select-none">
-                    {emailConfig.is_enabled ? 'Enabled' : 'Disabled'}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="email-enabled-toggle" className="text-xs font-medium text-foreground cursor-pointer">
+                    {emailConfig.is_enabled ? 'Gateway Active' : 'Gateway Disabled'}
                   </label>
                   <input
                     id="email-enabled-toggle"
@@ -775,23 +749,9 @@ export default function CommunicationIntegrations() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-                      whatsappConfig.is_enabled
-                        ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                        : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        whatsappConfig.is_enabled ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                      }`}
-                    />
-                    {whatsappConfig.is_enabled ? 'Live Production Active' : 'Simulation Mode'}
-                  </span>
-                  <label htmlFor="wa-enabled-toggle" className="text-xs font-medium text-foreground cursor-pointer select-none">
-                    {whatsappConfig.is_enabled ? 'Enabled' : 'Disabled'}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="wa-enabled-toggle" className="text-xs font-medium text-foreground cursor-pointer">
+                    {whatsappConfig.is_enabled ? 'Gateway Active' : 'Gateway Disabled'}
                   </label>
                   <input
                     id="wa-enabled-toggle"

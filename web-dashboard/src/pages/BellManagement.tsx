@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { 
@@ -33,6 +33,7 @@ type DeviceRecord = {
   status: string | null
   mac_address: string | null
   last_heartbeat: string | null
+  created_at?: string | null
   volume?: number | null
   input_voltage_mv?: number | null
   location_area?: string | null
@@ -519,7 +520,8 @@ export default function BellManagement() {
       let query = supabase
         .from('bell_devices')
         .select('*, bell_profiles!bell_devices_profile_id_fkey(name)')
-        .order('name')
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
       if (effectiveSchoolId) {
         query = query.eq('school_id', effectiveSchoolId)
       }
@@ -529,7 +531,8 @@ export default function BellManagement() {
         const fallbackQuery = supabase
           .from('bell_devices')
           .select('*, bell_profiles(name)')
-          .order('name')
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
         if (effectiveSchoolId) fallbackQuery.eq('school_id', effectiveSchoolId)
         const fbRes = await fallbackQuery
         if (!fbRes.error) {
@@ -539,7 +542,8 @@ export default function BellManagement() {
           const rawQuery = supabase
             .from('bell_devices')
             .select('*')
-            .order('name')
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
           if (effectiveSchoolId) rawQuery.eq('school_id', effectiveSchoolId)
           const rawRes = await rawQuery
           if (!rawRes.error) {
@@ -557,6 +561,18 @@ export default function BellManagement() {
     enabled: true,
     refetchInterval: 15000 // Refresh every 15 seconds to catch heartbeats
   })
+
+  // Deterministically sort devices in ascending order by registration date and time (created_at).
+  // This guarantees fixed grid positions that never change places on volume adjustments, heartbeats, or commands.
+  const sortedDevices = useMemo(() => {
+    if (!devices) return []
+    return [...devices].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+      if (timeA !== timeB) return timeA - timeB
+      return (a.id || '').localeCompare(b.id || '')
+    })
+  }, [devices])
 
   const { data: allProfiles } = useQuery({
     queryKey: ['bell_profiles', effectiveSchoolId, isSuperAdmin],
@@ -664,6 +680,27 @@ export default function BellManagement() {
     }
   })
 
+  const sendRealtimeBroadcast = (deviceId: string, command: string, payload: Record<string, unknown> = {}, commandId?: string | number) => {
+    const targetDevice = devices?.find(d => d.id === deviceId)
+    if (targetDevice?.mac_address) {
+      const cleanMac = targetDevice.mac_address.replace(/[: -]/g, '').toUpperCase()
+      const ch = supabase.channel(`device:${cleanMac}`)
+      ch.subscribe((st) => {
+        if (st === 'SUBSCRIBED') {
+          ch.send({
+            type: 'broadcast',
+            event: 'command',
+            payload: {
+              id: commandId ? String(commandId) : undefined,
+              command,
+              payload
+            }
+          }).then(() => supabase.removeChannel(ch))
+        }
+      })
+    }
+  }
+
   const sendCommandMutation = useMutation({
     mutationFn: async ({ deviceId, command, payload = {} }: { deviceId: string, command: string, payload?: Record<string, unknown> }) => {
       if (!schoolId && !isSuperAdmin) throw new Error('No school ID found')
@@ -676,24 +713,7 @@ export default function BellManagement() {
       if (error) throw error
 
       // Push via Supabase Realtime broadcast channels for zero-latency execution (<100ms)
-      const targetDevice = devices?.find(d => d.id === deviceId)
-      if (targetDevice?.mac_address) {
-        const cleanMac = targetDevice.mac_address.replace(/[: -]/g, '').toUpperCase()
-        const ch = supabase.channel(`device:${cleanMac}`)
-        ch.subscribe((st) => {
-          if (st === 'SUBSCRIBED') {
-            ch.send({
-              type: 'broadcast',
-              event: 'command',
-              payload: {
-                id: insertedCmd ? String(insertedCmd.id) : undefined,
-                command,
-                payload
-              }
-            }).then(() => supabase.removeChannel(ch))
-          }
-        })
-      }
+      sendRealtimeBroadcast(deviceId, command, payload, insertedCmd?.id)
     },
     onSuccess: (_, variables) => {
       const chDesc = variables.payload?.channel === 'left' ? 'Left Zone' : variables.payload?.channel === 'right' ? 'Right Zone' : 'Both Zones'
@@ -743,7 +763,7 @@ export default function BellManagement() {
 
       if (dbError) throw dbError
 
-      const { error: cmdError } = await supabase.from('command_queue').insert({
+      const { data: insertedCmd, error: cmdError } = await supabase.from('command_queue').insert({
         device_id: deviceId,
         command: 'SET_VOLUME',
         payload: { 
@@ -752,9 +772,16 @@ export default function BellManagement() {
           volume_left: updateData.volume_left,
           volume_right: updateData.volume_right
         }
-      })
+      }).select('id').single()
 
       if (cmdError) throw cmdError
+
+      sendRealtimeBroadcast(deviceId, 'SET_VOLUME', {
+        volume,
+        channel: targetChannel,
+        volume_left: updateData.volume_left,
+        volume_right: updateData.volume_right
+      }, insertedCmd?.id)
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
@@ -801,19 +828,23 @@ export default function BellManagement() {
 
       if (dbError) throw dbError
 
-      const { error: cmdError } = await supabase.from('command_queue').insert({
+      const cmdPayload = {
+        source: 'zone_profile_select',
+        channel,
+        profile_id: targetProfId,
+        profile_id_left: updateData.profile_id_left,
+        profile_id_right: updateData.profile_id_right
+      }
+
+      const { data: insertedCmd, error: cmdError } = await supabase.from('command_queue').insert({
         device_id: deviceId,
         command: 'SYNC_SCHEDULES',
-        payload: {
-          source: 'zone_profile_select',
-          channel,
-          profile_id: targetProfId,
-          profile_id_left: updateData.profile_id_left,
-          profile_id_right: updateData.profile_id_right
-        }
-      })
+        payload: cmdPayload
+      }).select('id').single()
 
       if (cmdError) throw cmdError
+
+      sendRealtimeBroadcast(deviceId, 'SYNC_SCHEDULES', cmdPayload, insertedCmd?.id)
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
@@ -837,11 +868,17 @@ export default function BellManagement() {
         .eq('id', deviceId)
       if (error) throw error
 
-      await supabase.from('command_queue').insert({
+      const cmdPayload = { source: 'toggle_channel_mode', channel_mode: newMode }
+      const { data: insertedCmd, error: cmdError } = await supabase.from('command_queue').insert({
         device_id: deviceId,
         command: 'SYNC_SCHEDULES',
-        payload: { source: 'toggle_channel_mode', channel_mode: newMode }
-      })
+        payload: cmdPayload
+      }).select('id').single()
+
+      if (!cmdError) {
+        sendRealtimeBroadcast(deviceId, 'SYNC_SCHEDULES', cmdPayload, insertedCmd?.id)
+      }
+
       return newMode
     },
     onSuccess: (newMode) => {
@@ -928,7 +965,7 @@ export default function BellManagement() {
         </div>
       )}
 
-      {(!devices || devices.length === 0) ? (
+      {(!sortedDevices || sortedDevices.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-border bg-card/50 text-foreground space-y-4">
           <div className="rounded-full bg-primary/10 p-4 text-primary">
             <Bell className="h-10 w-10 stroke-1" />
@@ -947,7 +984,7 @@ export default function BellManagement() {
         </div>
       ) : (
         <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-          {devices.map((device) => {
+          {sortedDevices.map((device) => {
             const statusInfo = resolveDeviceStatus(device.status, device.last_heartbeat)
             const isDual = device.channel_mode === 'dual_channel' && device.board_type !== 'ESP32-C3 Mini'
 
